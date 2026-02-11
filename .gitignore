@@ -1,17 +1,65 @@
 # Git worktrees
 .worktrees/
 
+# OS-specific files
+.DS_Store
+.DS_Store/**
+Thumbs.db
+
+# IDEs & Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+.idea/*
+!.idea/inspectionProfiles/
+.idea/inspectionProfiles/*
+!.idea/inspectionProfiles/default.xml
+*.swp
+*.swo
+*~
+.code-workspace
+
 # Node.js
 node_modules/
 npm-debug.log
 yarn-error.log
 .npm
 
-# Dependencies
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Firmware/Build artifacts
+*.o
+*.out
+*.elf
+*.hex
 dist/
 build/
 
-# Environment
+# Environment variables
 .env
 .env.local
 .env.*.local
+*.local.json
+
+# Logs & Temporary files
+*.log
+*.tmp
+*.temp
+.cache/
+
+# SQLite databases (generated at runtime)
+*.db
+*.db-shm
+*.db-wal
