@@ -7,8 +7,19 @@
 Thumbs.db
 
 # IDEs & Editors
-.vscode/
-.idea/
+# VS Code - commit shared settings, ignore user-specific files
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# IntelliJ/PyCharm - commit inspection profiles, ignore workspace config
+.idea/*
+!.idea/inspectionProfiles/
+.idea/inspectionProfiles/*
+!.idea/inspectionProfiles/default.xml
+
+# Editor swap/backup files
 *.swp
 *.swo
 *~
