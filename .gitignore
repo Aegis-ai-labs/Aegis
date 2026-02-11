@@ -1,0 +1,17 @@
+# Git worktrees
+.worktrees/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+
+# Dependencies
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
