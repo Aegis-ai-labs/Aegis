@@ -10,16 +10,12 @@ from bridge.tools import health, wealth
 from bridge.tools.registry import execute_tool
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_db():
-    """Fresh database for each test."""
-    if os.path.exists("test_aegis1.db"):
-        os.remove("test_aegis1.db")
-    init_db()
-    seed_demo_data(days=7)
+    """Initialize database once for all tests in this module."""
+    init_db()  # Create tables
+    seed_demo_data(days=7)  # Seed demo data
     yield
-    if os.path.exists("test_aegis1.db"):
-        os.remove("test_aegis1.db")
 
 
 @pytest.mark.asyncio
