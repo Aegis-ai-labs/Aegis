@@ -43,8 +43,15 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS user_insights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            insight TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE INDEX IF NOT EXISTS idx_health_metric ON health_logs(metric, timestamp);
         CREATE INDEX IF NOT EXISTS idx_expense_cat ON expenses(category, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_insights_created ON user_insights(created_at);
     """)
     conn.commit()
     conn.close()
