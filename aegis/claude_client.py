@@ -49,9 +49,7 @@ class ClaudeClient:
         db = await get_db()
         health_context = await build_health_context(db)
         if health_context:
-            return f"{SYSTEM_PROMPT_BASE}
-
-{health_context}"
+            return f"{SYSTEM_PROMPT_BASE}\n\n{health_context}"
         return SYSTEM_PROMPT_BASE
 
     async def chat(self, user_text: str) -> AsyncGenerator[str, None]:
@@ -135,10 +133,12 @@ class ClaudeClient:
                 except json.JSONDecodeError:
                     tool_input = {}
 
-                log.info(f"Tool call: {tool[\"name\"]}({tool_input})")
+                tool_name = tool["name"]
+                log.info(f"Tool call: {tool_name}({tool_input})")
                 t1 = time.monotonic()
-                result = await dispatch_tool(tool["name"], tool_input)
-                log.info(f"Tool {tool[\"name\"]} completed in {time.monotonic()-t1:.3f}s")
+                result = await dispatch_tool(tool_name, tool_input)
+                elapsed = time.monotonic() - t1
+                log.info(f"Tool {tool_name} completed in {elapsed:.3f}s")
 
                 tool_results.append({
                     "type": "tool_result",

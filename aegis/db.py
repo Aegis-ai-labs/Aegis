@@ -4,15 +4,31 @@ import sqlite3
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
-from bridge.config import settings
+from aegis.config import settings
+
+# Global database connection for the application
+_db_connection: Optional[sqlite3.Connection] = None
+
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
-    if settings.db_path != ":memory:":
-        conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    """Get or create database connection."""
+    global _db_connection
+    if _db_connection is None:
+        _db_connection = sqlite3.connect(settings.db_path)
+        _db_connection.row_factory = sqlite3.Row
+        if settings.db_path != ":memory:":
+            _db_connection.execute("PRAGMA journal_mode=WAL")
+    return _db_connection
+
+
+async def close_db():
+    """Close database connection on shutdown."""
+    global _db_connection
+    if _db_connection is not None:
+        _db_connection.close()
+        _db_connection = None
 
 
 def init_db():

@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 import pytest
 
-from bridge.claude_client import ClaudeClient, select_model, SYSTEM_PROMPT, OPUS_TRIGGERS
-from bridge.tools.registry import TOOL_DEFINITIONS
+from aegis.claude_client import ClaudeClient, select_model, SYSTEM_PROMPT, OPUS_TRIGGERS
+from aegis.tools.registry import TOOL_DEFINITIONS
 
 
 # --- Model routing tests ---

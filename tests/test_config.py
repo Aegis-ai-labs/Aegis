@@ -4,7 +4,7 @@ import pytest
 import os
 from unittest.mock import patch
 
-from bridge.config import Settings
+from aegis.config import Settings
 
 
 class TestSettings:

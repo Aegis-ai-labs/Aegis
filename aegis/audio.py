@@ -6,7 +6,7 @@ import struct
 import wave
 from typing import Optional
 
-from bridge.config import settings
+from aegis.config import settings
 
 logger = logging.getLogger(__name__)
 

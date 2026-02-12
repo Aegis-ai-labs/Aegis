@@ -2,7 +2,7 @@
 
 import struct
 
-from bridge.audio import pcm_to_wav, wav_to_pcm, detect_silence, calculate_rms
+from aegis.audio import pcm_to_wav, wav_to_pcm, detect_silence, calculate_rms
 
 
 def test_pcm_to_wav_roundtrip():

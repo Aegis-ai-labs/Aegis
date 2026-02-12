@@ -11,10 +11,10 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import asyncio
 import math
 
-from bridge.config import settings
-from bridge.audio import pcm_to_wav, wav_to_pcm, detect_silence
-from bridge.stt import transcribe_wav
-from bridge.tts import TTSEngine
+from aegis.config import settings
+from aegis.audio import pcm_to_wav, wav_to_pcm, detect_silence
+from aegis.stt import transcribe_wav
+from aegis.tts import TTSEngine
 
 # Test constants
 SILENCE_THRESHOLD = 500  # Amplitude threshold for silence detection

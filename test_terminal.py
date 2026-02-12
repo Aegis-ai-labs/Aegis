@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from bridge.claude_client import ClaudeClient
+from aegis.claude_client import ClaudeClient
 
 
 async def main():

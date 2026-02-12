@@ -5,9 +5,9 @@ import os
 
 import pytest
 
-from bridge.db import init_db, seed_demo_data, get_db
-from bridge.tools import health, wealth
-from bridge.tools.registry import execute_tool
+from aegis.db import init_db, seed_demo_data, get_db
+from aegis.tools import health, wealth
+from aegis.tools.registry import execute_tool
 
 
 @pytest.fixture(scope="module", autouse=True)

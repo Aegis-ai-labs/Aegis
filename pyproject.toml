@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis1"
+version = "0.1.0"
+description = "AEGIS1 — AI voice pendant for health & wealth management"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "AEGIS1 Team", email = "team@aegis1.dev"}
+]
+
+dependencies = [
+    # Core framework
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.32.0",
+    "websockets==14.1",
+    "python-multipart==0.0.18",
+
+    # Claude API
+    "anthropic==0.40.0",
+
+    # Configuration
+    "pydantic==2.10.3",
+    "pydantic-settings==2.7.0",
+    "python-dotenv==1.0.1",
+
+    # Database
+    "aiosqlite==0.20.0",
+
+    # Audio processing
+    "numpy==2.2.1",
+    "scipy==1.15.0",
+    "pydub>=0.25.0",
+
+    # STT — Moonshine Streaming Tiny (primary)
+    "moonshine-onnx>=0.1.0",
+    # STT — faster-whisper (fallback)
+    "faster-whisper==1.1.0",
+    "ctranslate2==4.5.0",
+    "tokenizers==0.21.0",
+
+    # TTS — Kokoro (primary)
+    "kokoro-onnx>=0.4.0",
+    # TTS — Piper (fallback)
+    "piper-tts>=1.2.0",
+
+    # VAD — Silero
+    "silero-vad>=5.1",
+
+    # ONNX Runtime (shared backend for Moonshine + Kokoro)
+    "onnxruntime>=1.19.0",
+
+    # Local LLM — Ollama client
+    "httpx>=0.27.0",
+
+    # Memory — sqlite-vec
+    "sqlite-vec>=0.1.0",
+
+    # Logging & monitoring
+    "structlog==24.4.0",
+
+    # CLI
+    "click>=8.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "black==24.10.0",
+    "ruff==0.8.4",
+]
+
+[project.scripts]
+aegis = "aegis.__main__:main"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]

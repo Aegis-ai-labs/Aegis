@@ -6,8 +6,8 @@ import os
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from bridge.db import get_db, init_db, seed_demo_data
-from bridge.config import Settings
+from aegis.db import get_db, init_db, seed_demo_data
+from aegis.config import Settings
 
 
 @pytest.fixture

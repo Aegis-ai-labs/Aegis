@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 @pytest.fixture(scope="session", autouse=True)
 def init_test_database():
     """Initialize test database before running any tests."""
-    from bridge.db import init_db
+    from aegis.db import init_db
 
     # Remove any existing test database
     test_db_path = "test_aegis1.db"
