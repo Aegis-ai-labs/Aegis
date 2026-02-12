@@ -140,7 +140,7 @@ def main():
     import uvicorn
 
     uvicorn.run(
-        "bridge.main:app",
+        "aegis.main:app",
         host=settings.bridge_host,
         port=settings.bridge_port,
         log_level=settings.log_level.lower(),

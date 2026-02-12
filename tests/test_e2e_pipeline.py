@@ -119,7 +119,7 @@ class TestSTTIntegration:
         wav_data = pcm_to_wav(pcm_data, sample_rate=sample_rate, channels=1)
 
         # Mock the internal _get_model function to avoid requiring faster-whisper
-        with patch('bridge.stt._get_model') as mock_get_model:
+        with patch('aegis.stt._get_model') as mock_get_model:
             mock_model = MagicMock()
             mock_segment = MagicMock()
             mock_segment.text = "Hello world"
@@ -207,7 +207,7 @@ class TestPipelineOrchestration:
         wav_data = pcm_to_wav(pcm_data, sample_rate=sample_rate, channels=1)
 
         # Mock STT internal model to avoid requiring faster-whisper
-        with patch('bridge.stt._get_model') as mock_get_model:
+        with patch('aegis.stt._get_model') as mock_get_model:
             mock_model = MagicMock()
             mock_segment = MagicMock()
             mock_segment.text = "transcribed text"

@@ -114,5 +114,10 @@ async def dispatch_tool(tool_name: str, tool_input: dict) -> str:
     handler = _HANDLERS.get(tool_name)
     if not handler:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
-    result = await handler(**tool_input)
-    return json.dumps(result)
+    try:
+        result = await handler(**tool_input)
+        return json.dumps(result)
+    except TypeError as e:
+        return json.dumps({"error": f"Invalid arguments for {tool_name}: {e}"})
+    except Exception as e:
+        return json.dumps({"error": f"Tool execution failed: {e}"})
