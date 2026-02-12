@@ -63,3 +63,8 @@ build/
 *.tmp
 *.temp
 .cache/
+
+# SQLite databases (generated at runtime)
+*.db
+*.db-shm
+*.db-wal
