@@ -44,7 +44,7 @@ def test_system_prompt_has_key_elements():
 # --- Tool definitions tests ---
 
 def test_tool_definitions_count():
-    assert len(TOOL_DEFINITIONS) == 6
+    assert len(TOOL_DEFINITIONS) == 7  # 3 health + 3 wealth + 1 insight
 
 
 def test_tool_definitions_have_required_fields():
@@ -60,6 +60,7 @@ def test_tool_names():
     expected = {
         "get_health_context", "log_health", "analyze_health_patterns",
         "track_expense", "get_spending_summary", "calculate_savings_goal",
+        "save_user_insight",
     }
     assert names == expected
 

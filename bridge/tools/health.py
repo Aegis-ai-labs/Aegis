@@ -54,15 +54,31 @@ async def get_health_context(days: int = 7, metrics: Optional[list[str]] = None)
 
 
 async def log_health(metric: str, value: float, notes: str = "") -> dict:
-    """Log a health data point."""
+    """Log a health data point with weekly context."""
     conn = get_db()
+
+    # Get 7-day average for comparison
+    week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    avg_row = conn.execute(
+        "SELECT AVG(value) as avg FROM health_logs WHERE metric = ? AND timestamp >= ?",
+        (metric, week_ago)
+    ).fetchone()
+    weekly_avg = round(avg_row["avg"], 1) if avg_row["avg"] else None
+
+    # Insert new value
     conn.execute(
         "INSERT INTO health_logs (metric, value, notes) VALUES (?, ?, ?)",
         (metric, value, notes),
     )
     conn.commit()
     conn.close()
-    return {"status": "logged", "metric": metric, "value": value}
+
+    result = {"status": "logged", "metric": metric, "value": value}
+    if weekly_avg:
+        result["weekly_avg"] = weekly_avg
+        result["comparison"] = "above" if value > weekly_avg else "below" if value < weekly_avg else "at"
+
+    return result
 
 
 async def analyze_health_patterns(query: str, days: int = 30) -> dict:
@@ -92,3 +108,15 @@ async def analyze_health_patterns(query: str, days: int = 30) -> dict:
         "total_records": len(rows),
         "daily_data": daily_records,
     }
+
+
+async def save_user_insight(insight: str) -> dict:
+    """Save a discovered pattern/insight about the user."""
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO user_insights (insight) VALUES (?)",
+        (insight,)
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "saved", "insight": insight}

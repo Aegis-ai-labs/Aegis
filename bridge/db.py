@@ -43,8 +43,15 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS user_insights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            insight TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE INDEX IF NOT EXISTS idx_health_metric ON health_logs(metric, timestamp);
         CREATE INDEX IF NOT EXISTS idx_expense_cat ON expenses(category, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_insights_created ON user_insights(created_at);
     """)
     conn.commit()
     conn.close()
@@ -67,11 +74,12 @@ def seed_demo_data(days: int = 30):
         ts = now - timedelta(days=day_offset)
         date_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Sleep hours: 5.5-8.5, trending worse on weekdays
+        # Sleep hours: DRAMATIC weekday/weekend pattern for demo
         is_weekend = ts.weekday() >= 5
-        base_sleep = 7.5 if is_weekend else 6.5
-        sleep = round(base_sleep + random.gauss(0, 0.8), 1)
-        sleep = max(4.0, min(10.0, sleep))
+        # Weekends: 7.5-8.5 hours, Weekdays: 5.5-6.5 hours
+        base_sleep = 8.0 if is_weekend else 6.0
+        sleep = round(base_sleep + random.gauss(0, 0.4), 1)
+        sleep = max(4.5, min(9.0, sleep))
         conn.execute(
             "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
             ("sleep_hours", sleep, "", date_str),
@@ -92,9 +100,10 @@ def seed_demo_data(days: int = 30):
             ("heart_rate", hr, "resting", date_str),
         )
 
-        # Mood: 1-5, correlates with sleep
-        mood_base = 3.0 + (sleep - 6.5) * 0.5
-        mood = round(max(1, min(5, mood_base + random.gauss(0, 0.5))), 1)
+        # Mood: STRONG correlation with sleep for demo
+        # Below 6h sleep → mood 2-3, Above 7h sleep → mood 4-5
+        mood_base = 2.0 + (sleep - 5.0) * 0.6  # More dramatic slope
+        mood = round(max(1, min(5, mood_base + random.gauss(0, 0.3))), 1)
         conn.execute(
             "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
             ("mood", mood, "", date_str),
@@ -115,31 +124,45 @@ def seed_demo_data(days: int = 30):
             ("water", water, "glasses", date_str),
         )
 
-        # Exercise: 0-60 minutes, more on weekends
-        exercise = int(random.gauss(30 if is_weekend else 15, 15))
+        # Exercise: CLEAR fitness pattern - active weekends, sedentary weekdays
+        if is_weekend:
+            exercise = int(random.gauss(45, 10))  # 35-55 min on weekends
+        else:
+            exercise = int(random.gauss(10, 8))   # 0-20 min on weekdays
         exercise = max(0, min(90, exercise))
         conn.execute(
             "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
             ("exercise_minutes", exercise, "", date_str),
         )
 
-        # Daily expenses (1-3 per day)
-        n_expenses = random.randint(1, 3)
-        expense_templates = [
-            (12.50, "food", "lunch"),
-            (45.00, "food", "dinner out"),
-            (5.00, "food", "coffee"),
-            (3.50, "transport", "bus fare"),
-            (25.00, "transport", "uber"),
-            (15.00, "entertainment", "movie ticket"),
-            (30.00, "shopping", "online order"),
-            (8.00, "food", "breakfast"),
-            (60.00, "utilities", "phone bill"),
-            (20.00, "health", "supplements"),
-        ]
+        # Daily expenses with FOOD SPENDING SPIKE pattern
+        # Weekends = higher dining out, Fridays = treat yourself day
+        is_friday = ts.weekday() == 4
+
+        if is_weekend or is_friday:
+            # Weekend/Friday: 2-4 expenses, more dining out
+            n_expenses = random.randint(2, 4)
+            expense_templates = [
+                (45.00, "food", "dinner out"),
+                (55.00, "food", "brunch"),
+                (25.00, "food", "takeout"),
+                (12.00, "food", "coffee shop"),
+                (30.00, "entertainment", "movie"),
+                (20.00, "shopping", "impulse buy"),
+            ]
+        else:
+            # Weekdays: 1-2 expenses, more routine
+            n_expenses = random.randint(1, 2)
+            expense_templates = [
+                (12.50, "food", "lunch"),
+                (5.00, "food", "coffee"),
+                (3.50, "transport", "bus fare"),
+                (8.00, "food", "breakfast"),
+            ]
+
         for _ in range(n_expenses):
             amt, cat, desc = random.choice(expense_templates)
-            amt = round(amt * random.uniform(0.8, 1.3), 2)
+            amt = round(amt * random.uniform(0.85, 1.15), 2)
             conn.execute(
                 "INSERT INTO expenses (amount, category, description, timestamp) VALUES (?, ?, ?, ?)",
                 (amt, cat, desc, date_str),

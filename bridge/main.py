@@ -15,7 +15,8 @@ import time
 from collections import defaultdict
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from bridge.config import settings
 from bridge.db import ensure_db
@@ -37,14 +38,9 @@ tts_engine = TTSEngine()
 
 # Per-connection state
 connections: dict[str, dict] = {}
+dashboard_clients: set[WebSocket] = set()
 
 app = FastAPI(title="AEGIS1 Bridge", version="0.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Latency tracking
 latency_stats: dict[str, list[float]] = defaultdict(list)
@@ -55,6 +51,27 @@ def log_latency(stage: str, ms: float):
     # Keep last 100 measurements
     if len(latency_stats[stage]) > 100:
         latency_stats[stage] = latency_stats[stage][-100:]
+
+
+async def broadcast_to_dashboard(event: dict):
+    """Send event to all connected dashboard clients."""
+    if not dashboard_clients:
+        return
+    disconnected = set()
+    for client in dashboard_clients:
+        try:
+            await client.send_json(event)
+        except Exception:
+            disconnected.add(client)
+    # Clean up disconnected clients
+    dashboard_clients.difference_update(disconnected)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    """Serve the dashboard HTML."""
+    with open("static/index.html") as f:
+        return f.read()
 
 
 @app.get("/health")
@@ -77,6 +94,48 @@ async def api_status():
         "connections": len(connections),
         "latency": stats,
     }
+
+
+@app.websocket("/ws/dashboard")
+async def dashboard_websocket(websocket: WebSocket):
+    """WebSocket for dashboard real-time updates."""
+    await websocket.accept()
+    dashboard_clients.add(websocket)
+    logger.info("Dashboard client connected")
+
+    try:
+        # Send initial health summary
+        from bridge.context import build_health_context
+        from bridge.db import get_db
+        from datetime import datetime, timedelta
+
+        health_context = build_health_context(days=7)
+
+        # Get last 7 days of sleep for chart
+        db = get_db()
+        seven_days_ago = (datetime.now() - timedelta(days=7)).isoformat()
+        sleep_rows = db.execute(
+            "SELECT value, DATE(timestamp) as date FROM health_logs "
+            "WHERE metric = 'sleep_hours' AND timestamp >= ? "
+            "GROUP BY DATE(timestamp) ORDER BY date",
+            (seven_days_ago,)
+        ).fetchall()
+        daily_sleep = [row["value"] for row in sleep_rows]
+        db.close()
+
+        await websocket.send_json({
+            "type": "health_summary",
+            "stats": {"Health Context": health_context},
+            "daily_sleep": daily_sleep,
+        })
+
+        # Keep connection alive
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        logger.info("Dashboard client disconnected")
+    finally:
+        dashboard_clients.discard(websocket)
 
 
 @app.websocket("/ws/audio")
@@ -202,6 +261,9 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
 
     logger.info("STT [%.0fms]: %s", stt_ms, text)
 
+    # Broadcast user message to dashboard
+    await broadcast_to_dashboard({"type": "user_message", "text": text})
+
     # Stage 2: Claude (streaming with tools)
     llm_start = time.monotonic()
     full_response = ""
@@ -257,6 +319,14 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
 
     total_ms = (time.monotonic() - pipeline_start) * 1000
     log_latency("total", total_ms)
+
+    # Broadcast assistant response to dashboard
+    await broadcast_to_dashboard({
+        "type": "assistant_message",
+        "text": full_response,
+        "model": "haiku" if "haiku" in str(claude_client) else "opus",
+        "latency_ms": llm_ms,
+    })
 
     await websocket.send_json({
         "type": "done",

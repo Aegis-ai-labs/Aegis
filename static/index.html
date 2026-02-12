@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEGIS1 Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #00ff88;
+        }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .panel h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #00ff88;
+        }
+        .transcript { height: 500px; overflow-y: auto; font-size: 14px; }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            line-height: 1.5;
+        }
+        .user { background: #1a2a3a; border-left: 3px solid #0088ff; }
+        .assistant { background: #1a2a1a; border-left: 3px solid #00ff88; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .badge-haiku { background: #0088ff; color: #fff; }
+        .badge-opus { background: #ff0088; color: #fff; }
+        .badge-thinking { background: #ffaa00; color: #000; animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .tool-call {
+            background: #2a1a1a;
+            border-left: 3px solid #ff8800;
+            padding: 8px;
+            margin: 8px 0;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .health-chart {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .bar-container {
+            text-align: center;
+        }
+        .bar {
+            width: 100%;
+            background: linear-gradient(180deg, #00ff88, #008844);
+            border-radius: 4px 4px 0 0;
+            margin-bottom: 5px;
+        }
+        .bar-label {
+            font-size: 10px;
+            color: #888;
+        }
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+        }
+        .stat:last-child { border-bottom: none; }
+        .stat-label { color: #888; }
+        .stat-value { font-weight: 600; color: #00ff88; }
+        #status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            background: #1a1a1a;
+            border: 1px solid #00ff88;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Connecting...</div>
+    <div class="container">
+        <h1>AEGIS1 Real-Time Dashboard</h1>
+        <div class="grid">
+            <div class="panel">
+                <h2>Live Transcript</h2>
+                <div class="transcript" id="transcript"></div>
+            </div>
+            <div class="panel">
+                <h2>7-Day Health Summary</h2>
+                <div id="health-stats"></div>
+                <div class="health-chart" id="health-chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.host}/ws/dashboard`);
+        const transcript = document.getElementById('transcript');
+        const status = document.getElementById('status');
+        const healthStats = document.getElementById('health-stats');
+        const healthChart = document.getElementById('health-chart');
+
+        ws.onopen = () => {
+            status.textContent = 'Connected';
+            status.style.borderColor = '#00ff88';
+        };
+
+        ws.onclose = () => {
+            status.textContent = 'Disconnected';
+            status.style.borderColor = '#ff0088';
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'user_message') {
+                const div = document.createElement('div');
+                div.className = 'message user';
+                div.innerHTML = `<strong>User:</strong> ${data.text}`;
+                transcript.appendChild(div);
+                transcript.scrollTop = transcript.scrollHeight;
+            }
+
+            else if (data.type === 'assistant_message') {
+                const div = document.createElement('div');
+                div.className = 'message assistant';
+                let badge = '';
+                if (data.model) {
+                    const modelType = data.model.includes('haiku') ? 'haiku' : 'opus';
+                    badge = `<span class="badge badge-${modelType}">${modelType.toUpperCase()}</span>`;
+                }
+                if (data.latency_ms) {
+                    badge += ` <span class="badge" style="background: #333">${Math.round(data.latency_ms)}ms</span>`;
+                }
+                div.innerHTML = `<strong>Aegis:</strong>${badge} ${data.text}`;
+                transcript.appendChild(div);
+                transcript.scrollTop = transcript.scrollHeight;
+            }
+
+            else if (data.type === 'thinking') {
+                const div = document.createElement('div');
+                div.className = 'message assistant';
+                div.innerHTML = `<span class="badge badge-thinking">THINKING</span> ${data.preview}`;
+                transcript.appendChild(div);
+                transcript.scrollTop = transcript.scrollHeight;
+            }
+
+            else if (data.type === 'tool_call') {
+                const div = document.createElement('div');
+                div.className = 'tool-call';
+                div.textContent = `🔧 ${data.name}(${JSON.stringify(data.input).slice(0, 60)}...)`;
+                transcript.appendChild(div);
+                transcript.scrollTop = transcript.scrollHeight;
+            }
+
+            else if (data.type === 'health_summary') {
+                // Update health stats
+                healthStats.innerHTML = '';
+                for (const [key, value] of Object.entries(data.stats)) {
+                    const stat = document.createElement('div');
+                    stat.className = 'stat';
+                    stat.innerHTML = `
+                        <span class="stat-label">${key.replace('_', ' ')}</span>
+                        <span class="stat-value">${value}</span>
+                    `;
+                    healthStats.appendChild(stat);
+                }
+
+                // Update 7-day sleep chart
+                if (data.daily_sleep) {
+                    healthChart.innerHTML = '';
+                    const maxSleep = Math.max(...data.daily_sleep);
+                    data.daily_sleep.forEach((hours, i) => {
+                        const container = document.createElement('div');
+                        container.className = 'bar-container';
+                        const heightPct = (hours / maxSleep) * 100;
+                        container.innerHTML = `
+                            <div class="bar" style="height: ${heightPct * 1.5}px"></div>
+                            <div class="bar-label">${hours.toFixed(1)}h</div>
+                        `;
+                        healthChart.appendChild(container);
+                    });
+                }
+            }
+        };
+    </script>
+</body>
+</html>
