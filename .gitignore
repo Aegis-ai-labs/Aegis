@@ -63,3 +63,17 @@ build/
 *.tmp
 *.temp
 .cache/
+
+# Tool directories
+.firecrawl/
+.serena/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary implementation files
+*_part*.py
+build_phase*.py
+build_phase*.sh

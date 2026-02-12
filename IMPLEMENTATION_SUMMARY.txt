@@ -1,0 +1,1 @@
+Phase 3.2 Ready - Execute: bash build_phase32.sh

@@ -40,7 +40,41 @@ def select_model(user_text: str) -> str:
     return haiku_model
 ```
 
-Simple keyword matching in `claude_client.py`. Opus gets extended thinking (`budget_tokens=2048`) and higher `max_tokens` (1024 vs 300).
+Simple keyword matching in `claude_client.py`. Haiku for fast queries (<200ms), Opus for deep analysis. Opus gets extended thinking (`budget_tokens=10000`) and interleaved thinking (beta: `interleaved-thinking-2025-05-14`). Opus uses true streaming (`messages.stream()`) for sub-500ms TTFT.
+
+## Dynamic System Prompt Injection Pattern
+
+- **Layer 1 (static, cached):** Persona + voice constraints + behavioral rules, cached with `cache_control: ephemeral`
+- **Layer 2 (dynamic, per-call):** Health context auto-injected via `build_health_context()` (7-day snapshot from SQLite)
+- **Layer 3 (static, cached):** Tool-use behavioral directives, cached with `cache_control: ephemeral`
+
+The health context (Layer 2) is regenerated every call from `user_health_logs` table, making Claude responses body-aware and contextual without storing state in prompt.
+
+## Parallel Opus Pattern (Haiku Quick-Ack + Async Deep Analysis)
+
+For complex queries:
+
+1. **Immediately** return Haiku response to user (quick acknowledgment, tool results, or simple answer)
+2. **Async (in background)** dispatch Opus deep analysis via `asyncio.create_task()`
+3. **Later** stream Opus thinking blocks and enriched analysis to same user connection
+
+This avoids blocking on Opus latency (1-3 seconds) while still providing rich analysis. Implementation in `claude_client.py:stream_with_parallel_analysis()`.
+
+## Apple Health Import Pattern
+
+- `health_import.py` parses XML export from Apple Health
+- Extracts 5 quantitative types: `steps`, `heart_rate`, `weight`, `exercise_minutes`, `sleep_hours`
+- Stores as rows in `user_health_logs` (date, type, value, unit)
+- One-time import via CLI: `python -m aegis import-health ~/Downloads/apple_health_export/export.xml`
+- Used by `build_health_context()` to generate dynamic system prompts
+
+## Silero VAD Pattern
+
+- Voice Activity Detection (<1ms) replaces naive silence counting
+- Operates on 16-bit mono PCM at 16kHz
+- Returns probability (0-1) that chunk contains speech
+- Used in `main.py` to end recording when probability < 0.5 for N consecutive chunks (configurable)
+- Fallback: if Silero unavailable, use RMS-based silence detection
 
 ## Configuration Pattern
 
@@ -59,13 +93,13 @@ Simple keyword matching in `claude_client.py`. Opus gets extended thinking (`bud
 
 ## Naming Conventions
 
-| Element | Convention | Example |
-|---------|-----------|---------|
-| Python files | snake_case | `claude_client.py` |
-| Classes | PascalCase | `ClaudeClient`, `TTSEngine`, `Settings` |
-| Functions | snake_case | `get_health_context`, `select_model` |
-| Constants | UPPER_SNAKE | `OPUS_TRIGGERS`, `TOOL_DEFINITIONS` |
-| Config vars | snake_case (Python) / UPPER_SNAKE (.env) | `bridge_port` / `BRIDGE_PORT` |
+| Element      | Convention                               | Example                                 |
+| ------------ | ---------------------------------------- | --------------------------------------- |
+| Python files | snake_case                               | `claude_client.py`                      |
+| Classes      | PascalCase                               | `ClaudeClient`, `TTSEngine`, `Settings` |
+| Functions    | snake_case                               | `get_health_context`, `select_model`    |
+| Constants    | UPPER_SNAKE                              | `OPUS_TRIGGERS`, `TOOL_DEFINITIONS`     |
+| Config vars  | snake_case (Python) / UPPER_SNAKE (.env) | `bridge_port` / `BRIDGE_PORT`           |
 
 ## Error Handling
 
@@ -77,14 +111,16 @@ Simple keyword matching in `claude_client.py`. Opus gets extended thinking (`bud
 
 ## File Organization
 
-- One module per concern: `config`, `db`, `audio`, `stt`, `tts`, `claude_client`, `main`
+- One module per concern: `config`, `db`, `audio`, `stt`, `tts`, `claude_client`, `context`, `vad`, `health_import`, `main`
 - Tools in a sub-package: `tools/registry.py` + `tools/health.py` + `tools/wealth.py`
-- No deep nesting — flat structure under `bridge/`
+- No deep nesting — flat structure under `aegis/` (portable system, not middleware)
 - Docs separate from code: `docs/` at project root
+- Tests under `tests/` directory with `test_*.py` naming
 
 ## Latency Measurement Pattern
 
 Every pipeline stage is timed with `time.monotonic()`:
+
 ```python
 start = time.monotonic()
 # ... do work ...

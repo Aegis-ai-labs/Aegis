@@ -7,16 +7,17 @@ AEGIS1 is an AI-powered voice pendant that helps adults (ages 30-65) manage thei
 ## What AEGIS1 Is
 
 - A wearable voice assistant (ESP32 pendant with mic, speaker, LED, button)
-- A Python bridge server that orchestrates speech-to-speech AI conversations
-- A showcase of Claude's tool-use capabilities (6 specialized tools for health & wealth)
-- A dual-model system: Haiku 4.5 for speed, Opus 4.6 for deep analysis
+- A Python bridge server (aegis/) that orchestrates speech-to-speech AI conversations
+- A showcase of Claude's tool-use capabilities (7 specialized tools: 3 health, 3 wealth, 1 profile)
+- A dual-model system: Haiku 4.5 for fast queries, Opus 4.6 for deep analysis with extended thinking
+- A health-personalized assistant that learns your body through Apple Health import and dynamic system prompts
 - Built for the Anthropic Claude Code Hackathon (Feb 10-16, 2026)
 
 ## What AEGIS1 Is Not
 
 - Not a medical device or financial advisor (informational only)
-- Not a general-purpose assistant (scoped to health + wealth)
-- Not cloud-dependent for STT/TTS (faster-whisper and Piper run locally)
+- Not a general-purpose assistant (scoped to health + wealth with deep personal context)
+- Not cloud-dependent for STT/TTS (Moonshine, Kokoro, Silero run locally; faster-whisper/Piper fallbacks)
 - Not a wake-word device (button-press activation for the hackathon)
 
 ## Target Users

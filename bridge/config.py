@@ -21,21 +21,40 @@ class Settings(BaseSettings):
     sample_rate: int = 16000
     chunk_size_ms: int = 200
     max_recording_time_ms: int = 10000
-    silence_threshold: int = 500
-    silence_chunks_to_stop: int = 8  # 1.6s of silence
 
-    # STT (faster-whisper)
-    stt_model: str = "base"
-    stt_device: str = "cpu"
+    # STT — Moonshine Streaming Tiny primary, faster-whisper fallback
+    stt_engine: str = "moonshine"  # "moonshine" | "faster-whisper"
+    stt_model: str = "moonshine/tiny"  # moonshine: tiny|base; faster-whisper: tiny|base|small
     stt_language: str = "en"
-    stt_beam_size: int = 1
 
-    # TTS (Piper)
-    tts_model: str = "en_US-lessac-medium"
-    tts_speaker_id: int = 0
+    # TTS — Kokoro primary, Piper fallback
+    tts_engine: str = "kokoro"  # "kokoro" | "piper"
+    tts_kokoro_voice: str = "af_heart"  # Kokoro voice name
+    tts_piper_model: str = "en_US-lessac-medium"  # Piper fallback model
+
+    # VAD — Silero
+    vad_threshold: float = 0.5  # Speech probability threshold
+    vad_min_speech_ms: int = 250  # Min speech duration to trigger STT
+    vad_silence_ms: int = 700  # Silence after speech to end utterance
+
+    # Local LLM — Phi-3-mini via Ollama
+    local_llm_enabled: bool = True
+    local_llm_model: str = "phi3:mini"
+    local_llm_url: str = "http://localhost:11434"  # Ollama API
+
+    # Intent router
+    router_complexity_threshold: float = 0.5  # Below = local LLM, above = Claude
+
+    # Memory — sqlite-vec
+    memory_enabled: bool = True
+    memory_db_path: str = "aegis1_memory.db"
+    memory_max_results: int = 5
 
     # Database
     db_path: str = "aegis1.db"
+
+    # ADPCM audio compression
+    use_adpcm: bool = True  # 4x compression for ESP32 transport
 
     # Logging
     log_level: str = "INFO"
