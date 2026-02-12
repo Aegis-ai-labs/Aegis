@@ -9,6 +9,86 @@ from bridge.claude_client import ClaudeClient, select_model, SYSTEM_PROMPT, OPUS
 from bridge.tools.registry import TOOL_DEFINITIONS
 
 
+# Mock streaming helpers
+def _make_mock_stream(text_content="", tool_blocks=None):
+    """Create a mock streaming response for messages.stream()."""
+    class MockEvent:
+        def __init__(self, event_type, **kwargs):
+            self.type = event_type
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    events = []
+
+    # Add text content events
+    if text_content:
+        text_block = MagicMock()
+        text_block.type = "text"
+        events.append(MockEvent("content_block_start", content_block=text_block))
+
+        # Send text character by character
+        for char in text_content:
+            delta = MagicMock(spec=["text"])
+            delta.text = char
+            events.append(MockEvent("content_block_delta", delta=delta))
+
+        events.append(MockEvent("content_block_stop"))
+
+    # Add tool use events
+    if tool_blocks:
+        for tool in tool_blocks:
+            tool_block = MagicMock()
+            tool_block.type = "tool_use"
+            tool_block.id = tool["id"]
+            tool_block.name = tool["name"]
+            events.append(MockEvent("content_block_start", content_block=tool_block))
+
+            json_str = json.dumps(tool["input"])
+            delta = MagicMock(spec=["partial_json"])
+            delta.partial_json = json_str
+            events.append(MockEvent("content_block_delta", delta=delta))
+
+            events.append(MockEvent("content_block_stop"))
+
+    # Create final message
+    final_message = MagicMock()
+    content_blocks = []
+    if text_content:
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = text_content
+        content_blocks.append(text_block)
+    if tool_blocks:
+        for tool in tool_blocks:
+            tool_block = MagicMock()
+            tool_block.type = "tool_use"
+            tool_block.id = tool["id"]
+            tool_block.name = tool["name"]
+            tool_block.input = tool["input"]
+            content_blocks.append(tool_block)
+    final_message.content = content_blocks
+
+    class MockStream:
+        def __init__(self):
+            self.events = events
+            self.final_message = final_message
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def __aiter__(self):
+            for event in self.events:
+                yield event
+
+        async def get_final_message(self):
+            return self.final_message
+
+    return MockStream()
+
+
 # --- Model routing tests ---
 
 def test_select_model_haiku_for_simple():
@@ -106,9 +186,9 @@ async def test_client_simple_response():
     """Test simple text response without tool use."""
     client = ClaudeClient()
 
-    mock_response = _make_text_response("Hello! I'm Aegis, your health and wealth assistant.")
+    mock_stream = _make_mock_stream(text_content="Hello! I'm Aegis, your health and wealth assistant.")
 
-    with patch.object(client.client.messages, "create", return_value=mock_response):
+    with patch.object(client.client.messages, "stream", return_value=mock_stream):
         result = await client.get_full_response("hello")
 
     assert "Aegis" in result
@@ -120,18 +200,22 @@ async def test_client_tool_use_flow():
     """Test that tool calls are executed and results fed back to Claude."""
     client = ClaudeClient()
 
-    # First call: Claude wants to use a tool
-    tool_response = _make_tool_response(
-        "get_health_context", "tool_123", {"days": 7}
-    )
-    # Second call: Claude responds with text after getting tool result
-    text_response = _make_text_response("You averaged 6.8 hours of sleep this week.")
-
     mock_tool_result = json.dumps({"data": {"sleep_hours": {"avg": 6.8, "count": 7}}})
 
+    # Mock function to return different streams per call
+    call_count = [0]
+    def get_mock_stream(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return _make_mock_stream(
+                tool_blocks=[{"id": "tool_123", "name": "get_health_context", "input": {"days": 7}}]
+            )
+        else:
+            return _make_mock_stream(text_content="You averaged 6.8 hours of sleep this week.")
+
     with patch.object(
-        client.client.messages, "create",
-        side_effect=[tool_response, text_response]
+        client.client.messages, "stream",
+        side_effect=get_mock_stream
     ), patch(
         "bridge.claude_client.execute_tool",
         new=AsyncMock(return_value=mock_tool_result)
@@ -145,16 +229,17 @@ async def test_client_tool_use_flow():
 
 @pytest.mark.asyncio
 async def test_client_streaming_yields_chunks():
-    """Test that get_response yields text chunks."""
+    """Test that get_response yields text chunks token-by-token."""
     client = ClaudeClient()
 
-    mock_response = _make_text_response("This is a streamed response.")
+    mock_stream = _make_mock_stream(text_content="This is a streamed response.")
 
-    with patch.object(client.client.messages, "create", return_value=mock_response):
+    with patch.object(client.client.messages, "stream", return_value=mock_stream):
         chunks = []
         async for chunk in client.get_response("test"):
             chunks.append(chunk)
 
+    # Streaming yields character by character
     assert len(chunks) > 0
     assert "".join(chunks) == "This is a streamed response."
 
@@ -170,8 +255,8 @@ async def test_client_conversation_history_management():
         for i in range(42)
     ]
 
-    mock_response = _make_text_response("response")
-    with patch.object(client.client.messages, "create", return_value=mock_response):
+    mock_stream = _make_mock_stream(text_content="response")
+    with patch.object(client.client.messages, "stream", return_value=mock_stream):
         await client.get_full_response("new message")
 
     # Should be trimmed to last 20 + new user/assistant = some manageable size
