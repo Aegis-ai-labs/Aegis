@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from bridge.config import settings
 from bridge.db import ensure_db
 from bridge.audio import pcm_to_wav, detect_silence
+from bridge.audio_feedback import generate_listening_chime, generate_thinking_tone, generate_success_chime
 from bridge.stt import transcribe_wav
 from bridge.tts import TTSEngine
 from bridge.claude_client import ClaudeClient
@@ -183,6 +184,8 @@ async def audio_websocket(websocket: WebSocket):
                     is_recording = True
                     recording_start = time.monotonic()
                     logger.debug("Recording started")
+                    # Send "listening" chime
+                    await websocket.send_bytes(generate_listening_chime())
 
                 # Silence detection
                 is_silent = detect_silence(pcm_chunk, threshold=500)
@@ -200,6 +203,9 @@ async def audio_websocket(websocket: WebSocket):
                 if silence_counter >= SILENCE_CHUNKS_TO_STOP and len(audio_buffer) > 3200:
                     logger.info("End of speech: %d bytes, %d ms", len(audio_buffer), int(elapsed_ms))
                     await websocket.send_json({"type": "status", "state": "processing"})
+
+                    # Send "thinking" tone
+                    await websocket.send_bytes(generate_thinking_tone())
 
                     # Run the full pipeline
                     await process_pipeline(
@@ -327,6 +333,9 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
         "model": "haiku" if "haiku" in str(claude_client) else "opus",
         "latency_ms": llm_ms,
     })
+
+    # Send "success" chime
+    await websocket.send_bytes(generate_success_chime())
 
     await websocket.send_json({
         "type": "done",
