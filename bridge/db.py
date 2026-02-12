@@ -1,292 +1,155 @@
-"""
-AEGIS1 Database Module — SQLite schema, CRUD operations, demo data seeding.
-"""
+"""AEGIS1 SQLite storage — health logs, expenses, conversations."""
 
-import aiosqlite
+import sqlite3
 import random
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
 from pathlib import Path
-import json
 
-from .config import settings
+from bridge.config import settings
 
-
-# Schema definitions
-HEALTH_TABLE = """
-CREATE TABLE IF NOT EXISTS health_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    sleep_hours REAL,
-    steps INTEGER,
-    heart_rate_avg INTEGER,
-    mood TEXT,
-    notes TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-"""
-
-WEALTH_TABLE = """
-CREATE TABLE IF NOT EXISTS expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    amount REAL NOT NULL,
-    category TEXT NOT NULL,
-    description TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-"""
-
-INDEXES = [
-    "CREATE INDEX IF NOT EXISTS idx_health_date ON health_logs(date);",
-    "CREATE INDEX IF NOT EXISTS idx_expense_date ON expenses(date);",
-    "CREATE INDEX IF NOT EXISTS idx_expense_category ON expenses(category);",
-]
+def get_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    if settings.db_path != ":memory:":
+        conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
-class Database:
-    """Async SQLite database wrapper for AEGIS1."""
+def init_db():
+    conn = get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS health_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric TEXT NOT NULL,
+            value REAL NOT NULL,
+            notes TEXT DEFAULT '',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
-    def __init__(self, db_path: str = None):
-        self.db_path = db_path or settings.db_path
-        self._conn: Optional[aiosqlite.Connection] = None
+        CREATE TABLE IF NOT EXISTS expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            amount REAL NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
-    async def connect(self):
-        """Initialize database connection and create tables."""
-        self._conn = await aiosqlite.connect(self.db_path)
-        self._conn.row_factory = aiosqlite.Row
-        await self._create_tables()
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            model_used TEXT DEFAULT '',
+            latency_ms REAL DEFAULT 0,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
-    async def close(self):
-        """Close database connection."""
-        if self._conn:
-            await self._conn.close()
-            self._conn = None
-
-    async def _create_tables(self):
-        """Create tables and indexes."""
-        await self._conn.execute(HEALTH_TABLE)
-        await self._conn.execute(WEALTH_TABLE)
-        for index in INDEXES:
-            await self._conn.execute(index)
-        await self._conn.commit()
-
-    # Health CRUD Operations
-
-    async def log_health(
-        self,
-        date: str,
-        sleep_hours: Optional[float] = None,
-        steps: Optional[int] = None,
-        heart_rate_avg: Optional[int] = None,
-        mood: Optional[str] = None,
-        notes: Optional[str] = None,
-    ) -> int:
-        """Log health data for a specific date."""
-        cursor = await self._conn.execute(
-            """
-            INSERT INTO health_logs (date, sleep_hours, steps, heart_rate_avg, mood, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (date, sleep_hours, steps, heart_rate_avg, mood, notes),
-        )
-        await self._conn.commit()
-        return cursor.lastrowid
-
-    async def get_health_by_date(self, date: str) -> Optional[Dict[str, Any]]:
-        """Get health data for a specific date."""
-        cursor = await self._conn.execute(
-            "SELECT * FROM health_logs WHERE date = ? ORDER BY created_at DESC LIMIT 1",
-            (date,),
-        )
-        row = await cursor.fetchone()
-        return dict(row) if row else None
-
-    async def get_health_range(
-        self, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
-        """Get health data for a date range."""
-        cursor = await self._conn.execute(
-            "SELECT * FROM health_logs WHERE date BETWEEN ? AND ? ORDER BY date ASC",
-            (start_date, end_date),
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
-
-    async def get_recent_health(self, days: int = 7) -> List[Dict[str, Any]]:
-        """Get health data for the last N days."""
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        return await self.get_health_range(start_date, end_date)
-
-    # Wealth CRUD Operations
-
-    async def track_expense(
-        self, date: str, amount: float, category: str, description: Optional[str] = None
-    ) -> int:
-        """Log an expense."""
-        cursor = await self._conn.execute(
-            """
-            INSERT INTO expenses (date, amount, category, description)
-            VALUES (?, ?, ?, ?)
-            """,
-            (date, amount, category, description),
-        )
-        await self._conn.commit()
-        return cursor.lastrowid
-
-    async def get_expenses_by_date(self, date: str) -> List[Dict[str, Any]]:
-        """Get all expenses for a specific date."""
-        cursor = await self._conn.execute(
-            "SELECT * FROM expenses WHERE date = ? ORDER BY created_at DESC",
-            (date,),
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
-
-    async def get_expenses_range(
-        self, start_date: str, end_date: str
-    ) -> List[Dict[str, Any]]:
-        """Get expenses for a date range."""
-        cursor = await self._conn.execute(
-            "SELECT * FROM expenses WHERE date BETWEEN ? AND ? ORDER BY date DESC",
-            (start_date, end_date),
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
-
-    async def get_spending_by_category(
-        self, start_date: str, end_date: str
-    ) -> Dict[str, float]:
-        """Get total spending by category for a date range."""
-        cursor = await self._conn.execute(
-            """
-            SELECT category, SUM(amount) as total
-            FROM expenses
-            WHERE date BETWEEN ? AND ?
-            GROUP BY category
-            ORDER BY total DESC
-            """,
-            (start_date, end_date),
-        )
-        rows = await cursor.fetchall()
-        return {row["category"]: row["total"] for row in rows}
-
-    async def get_recent_expenses(self, days: int = 30) -> List[Dict[str, Any]]:
-        """Get expenses for the last N days."""
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        return await self.get_expenses_range(start_date, end_date)
+        CREATE INDEX IF NOT EXISTS idx_health_metric ON health_logs(metric, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_expense_cat ON expenses(category, timestamp);
+    """)
+    conn.commit()
+    conn.close()
 
 
-async def seed_demo_data(db: Database, days: int = 30):
-    """
-    Seed realistic demo data for the last N days.
-    Uses random.seed(42) for reproducibility.
-    """
-    random.seed(42)  # Reproducible random data
-    end_date = datetime.now()
+def seed_demo_data(days: int = 30):
+    """Seed 30 days of realistic demo data for health + expenses."""
+    conn = get_db()
 
-    # Demo data parameters
-    MOODS = ["great", "good", "okay", "tired", "stressed"]
-    CATEGORIES = ["food", "transport", "shopping", "health", "entertainment", "utilities"]
+    # Check if data already exists
+    count = conn.execute("SELECT COUNT(*) FROM health_logs").fetchone()[0]
+    if count > 0:
+        conn.close()
+        return
 
-    # Expense descriptions by category
-    EXPENSE_DESCRIPTIONS = {
-        "food": ["lunch", "dinner", "groceries", "coffee", "snacks"],
-        "transport": ["gas", "uber", "parking", "metro card"],
-        "shopping": ["clothes", "electronics", "household items"],
-        "health": ["pharmacy", "gym membership", "doctor visit"],
-        "entertainment": ["movie", "concert", "streaming service"],
-        "utilities": ["electricity", "internet", "phone bill"],
-    }
+    now = datetime.now()
+    random.seed(42)  # Reproducible demo data
 
-    print(f"Seeding {days} days of demo data...")
+    for day_offset in range(days, 0, -1):
+        ts = now - timedelta(days=day_offset)
+        date_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-    for i in range(days):
-        date = (end_date - timedelta(days=i)).strftime("%Y-%m-%d")
-
-        # Health data: realistic patterns with some variation
-        sleep_hours = round(random.gauss(7.2, 0.8), 1)  # Mean 7.2h, std 0.8h
-        sleep_hours = max(5.0, min(9.5, sleep_hours))  # Clamp to realistic range
-
-        steps = int(random.gauss(8500, 2500))  # Mean 8500, std 2500
-        steps = max(2000, min(18000, steps))
-
-        heart_rate = int(random.gauss(68, 5))  # Resting heart rate
-        heart_rate = max(55, min(85, heart_rate))
-
-        mood = random.choices(
-            MOODS, weights=[0.2, 0.35, 0.25, 0.15, 0.05]  # Bias toward positive
-        )[0]
-
-        # Insert health log
-        await db.log_health(
-            date=date,
-            sleep_hours=sleep_hours,
-            steps=steps,
-            heart_rate_avg=heart_rate,
-            mood=mood,
-            notes=None,
+        # Sleep hours: 5.5-8.5, trending worse on weekdays
+        is_weekend = ts.weekday() >= 5
+        base_sleep = 7.5 if is_weekend else 6.5
+        sleep = round(base_sleep + random.gauss(0, 0.8), 1)
+        sleep = max(4.0, min(10.0, sleep))
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("sleep_hours", sleep, "", date_str),
         )
 
-        # Expenses: 1-4 per day with realistic amounts
-        num_expenses = random.choices([1, 2, 3, 4], weights=[0.2, 0.4, 0.3, 0.1])[0]
+        # Steps: 3000-12000
+        steps = int(random.gauss(7000 if is_weekend else 5500, 2000))
+        steps = max(1000, min(15000, steps))
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("steps", steps, "", date_str),
+        )
 
-        for _ in range(num_expenses):
-            category = random.choice(CATEGORIES)
+        # Heart rate: 60-85 resting
+        hr = int(random.gauss(72, 6))
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("heart_rate", hr, "resting", date_str),
+        )
 
-            # Category-specific amount ranges
-            if category == "food":
-                amount = round(random.uniform(8, 65), 2)
-            elif category == "transport":
-                amount = round(random.uniform(5, 50), 2)
-            elif category == "shopping":
-                amount = round(random.uniform(20, 150), 2)
-            elif category == "health":
-                amount = round(random.uniform(15, 120), 2)
-            elif category == "entertainment":
-                amount = round(random.uniform(10, 80), 2)
-            elif category == "utilities":
-                amount = round(random.uniform(50, 200), 2)
+        # Mood: 1-5, correlates with sleep
+        mood_base = 3.0 + (sleep - 6.5) * 0.5
+        mood = round(max(1, min(5, mood_base + random.gauss(0, 0.5))), 1)
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("mood", mood, "", date_str),
+        )
 
-            description = random.choice(EXPENSE_DESCRIPTIONS[category])
+        # Weight: gradual trend 180-182 lbs
+        weight = round(181.0 + (day_offset - 15) * 0.03 + random.gauss(0, 0.3), 1)
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("weight", weight, "lbs", date_str),
+        )
 
-            await db.track_expense(
-                date=date,
-                amount=amount,
-                category=category,
-                description=description,
+        # Water: 4-10 glasses
+        water = int(random.gauss(7, 1.5))
+        water = max(3, min(12, water))
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("water", water, "glasses", date_str),
+        )
+
+        # Exercise: 0-60 minutes, more on weekends
+        exercise = int(random.gauss(30 if is_weekend else 15, 15))
+        exercise = max(0, min(90, exercise))
+        conn.execute(
+            "INSERT INTO health_logs (metric, value, notes, timestamp) VALUES (?, ?, ?, ?)",
+            ("exercise_minutes", exercise, "", date_str),
+        )
+
+        # Daily expenses (1-3 per day)
+        n_expenses = random.randint(1, 3)
+        expense_templates = [
+            (12.50, "food", "lunch"),
+            (45.00, "food", "dinner out"),
+            (5.00, "food", "coffee"),
+            (3.50, "transport", "bus fare"),
+            (25.00, "transport", "uber"),
+            (15.00, "entertainment", "movie ticket"),
+            (30.00, "shopping", "online order"),
+            (8.00, "food", "breakfast"),
+            (60.00, "utilities", "phone bill"),
+            (20.00, "health", "supplements"),
+        ]
+        for _ in range(n_expenses):
+            amt, cat, desc = random.choice(expense_templates)
+            amt = round(amt * random.uniform(0.8, 1.3), 2)
+            conn.execute(
+                "INSERT INTO expenses (amount, category, description, timestamp) VALUES (?, ?, ?, ?)",
+                (amt, cat, desc, date_str),
             )
 
-    print(f"✅ Demo data seeded: {days} days of health + expenses")
+    conn.commit()
+    conn.close()
 
 
-# Global database instance
-_db_instance: Optional[Database] = None
-
-
-async def get_db() -> Database:
-    """Get or create the global database instance."""
-    global _db_instance
-    if _db_instance is None:
-        _db_instance = Database()
-        await _db_instance.connect()
-
-        # Check if data exists, seed if empty
-        cursor = await _db_instance._conn.execute(
-            "SELECT COUNT(*) as count FROM health_logs"
-        )
-        row = await cursor.fetchone()
-        if row["count"] == 0:
-            await seed_demo_data(_db_instance, days=30)
-
-    return _db_instance
-
-
-async def close_db():
-    """Close the global database instance."""
-    global _db_instance
-    if _db_instance:
-        await _db_instance.close()
-        _db_instance = None
+def ensure_db():
+    """Initialize DB and seed demo data if needed. Call at app startup."""
+    init_db()
+    seed_demo_data()

@@ -1,6 +1,6 @@
 # AEGIS1 — System Architecture
 
-*Last updated: Feb 12, 2026 (Day 3)*
+_Last updated: Feb 12, 2026 (Day 3)_
 
 ## 1. System Overview
 
@@ -216,6 +216,7 @@ Use tools to query/write data. Max 5 tool call rounds per conversation turn.
 ```
 
 **Benefits:**
+
 - Layers 1+3 cached → reduced latency after first call (prompt caching)
 - Layer 2 dynamic → Claude always knows current body state
 - Personalized responses: "You've been sleeping less than usual this week, and your step count dropped. Consider prioritizing rest tonight." (not generic advice)
@@ -258,6 +259,7 @@ Use tools to query/write data. Max 5 tool call rounds per conversation turn.
 ```
 
 **One-time setup:**
+
 1. User exports Apple Health data (Settings → Health → Export)
 2. Run `python -m aegis import-health export.xml`
 3. Data loaded to `user_health_logs` table
@@ -296,12 +298,14 @@ User query text (from Moonshine STT)
 ### 4.2 Extended Thinking Configuration
 
 **Opus 4.6 requests use:**
+
 - Header: `anthropic-beta: interleaved-thinking-2025-05-14`
 - Parameter: `budget_tokens=10000` (allows Claude 10k tokens of internal reasoning)
 - Streaming: `messages.stream()` with `text` and `thinking` event types
 - Purpose: Showcase extended thinking on complex health correlations (e.g., "Why do I feel tired on Mondays?" → Opus reasons about sleep debt accumulation, weekend patterns, circadian disruption)
 
 **Example extended thinking flow:**
+
 ```
 User: "Why am I always tired on Mondays?"
   │
@@ -310,18 +314,18 @@ Haiku (quick ack): "Let me analyze your weekly patterns..."
   │ (user hears this in ~440ms)
   ▼
 Opus (async deep analysis):
-  thinking: "Need to look at sleep patterns across weeks, compare 
-             weekend vs weekday sleep, check for sleep debt 
+  thinking: "Need to look at sleep patterns across weeks, compare
+             weekend vs weekday sleep, check for sleep debt
              accumulation, consider exercise and nutrition timing..."
   tool_use: get_health_context(days=30, metrics=["sleep", "exercise"])
   tool_use: analyze_patterns(metric="sleep", days=30)
-  thinking: "I see a pattern: Friday/Saturday late sleep (avg 1am), 
-             Sunday recovery attempt but still 7h, Monday morning 6am 
+  thinking: "I see a pattern: Friday/Saturday late sleep (avg 1am),
+             Sunday recovery attempt but still 7h, Monday morning 6am
              alarm = sleep debt. Exercise drops on weekends too."
-  text: "Your Monday fatigue stems from weekend sleep schedule shifts. 
-         You're going to bed 2 hours later Friday and Saturday, 
-         recovering Sunday, but Monday's 6am alarm still cuts into 
-         your sleep debt. Try keeping bedtime within 1 hour of your 
+  text: "Your Monday fatigue stems from weekend sleep schedule shifts.
+         You're going to bed 2 hours later Friday and Saturday,
+         recovering Sunday, but Monday's 6am alarm still cuts into
+         your sleep debt. Try keeping bedtime within 1 hour of your
          weekday schedule, even on weekends."
   │ (streamed sentence-by-sentence to TTS)
   ▼
@@ -442,12 +446,13 @@ CREATE VIRTUAL TABLE conversation_memory USING vec0(
     embedding FLOAT[512],           -- text-embedding-3-small
     timestamp DATETIME
 );
--- Query: SELECT * FROM conversation_memory 
+-- Query: SELECT * FROM conversation_memory
 --        WHERE user_id = 1 AND vec_distance_cosine(embedding, ?) < 0.3
 --        ORDER BY vec_distance_cosine(embedding, ?) LIMIT 5
 ```
 
 **Demo data seeding:**
+
 - 30 days auto-seeded with `random.seed(42)` for reproducibility
 - Health: Sleep (5-9h with weekday/weekend variance), steps (4k-12k), heart rate (60-80 bpm), weight (163-167 lbs trending down), exercise (0-60 min/day)
 - Expenses: 1-3 daily expenses across categories ($5-$150 range, food most frequent)
@@ -458,12 +463,14 @@ CREATE VIRTUAL TABLE conversation_memory USING vec0(
 ### 7.1 ESP32 → Bridge (aegis server)
 
 **Binary frames (audio):**
+
 - Format: ADPCM compressed PCM
 - Compression: 4x (256kbps raw → 64kbps ADPCM)
 - Sample rate: 16kHz, 16-bit mono
 - Chunk size: 200ms worth (1600 bytes PCM → 400 bytes ADPCM)
 
 **Text frames (JSON control):**
+
 ```json
 {"type": "end_of_speech"}         // Button released, process now
 {"type": "reset"}                  // Clear conversation history
@@ -473,10 +480,12 @@ CREATE VIRTUAL TABLE conversation_memory USING vec0(
 ### 7.2 Bridge → ESP32
 
 **Binary frames (audio):**
+
 - Format: ADPCM compressed TTS output
 - Chunking: 400 bytes per frame with 10ms delay between chunks (prevents buffer overflow)
 
 **Text frames (JSON status):**
+
 ```json
 {"type": "connected", "message": "AEGIS1 ready", "config": {...}}
 {"type": "status", "state": "processing"|"speaking"|"idle"}
@@ -508,6 +517,7 @@ CREATE VIRTUAL TABLE conversation_memory USING vec0(
 ```
 
 **LED patterns:**
+
 - IDLE: Breathing (slow pulse, 2s cycle)
 - LISTENING: Solid on (bright)
 - PROCESSING: Fast pulse (200ms cycle)
@@ -517,28 +527,29 @@ CREATE VIRTUAL TABLE conversation_memory USING vec0(
 
 ### 9.1 Simple Query Path (Haiku, 80% of interactions)
 
-| Stage | Target | Actual Measurement Point | Optimizations |
-|-------|--------|--------------------------|---------------|
-| ADPCM decompression | <5ms | Compressed frame → PCM buffer | Standard codec |
-| Silero VAD | <1ms | Per 200ms chunk | Optimized PyTorch model |
-| Moonshine STT | 80ms | Audio buffer → text string | Native streaming, 27M params |
-| Claude Haiku TTFT | 150ms | Request sent → first token | Prompt caching on L1+L3 |
-| Tool execution (if any) | 20ms | Tool call → JSON result | SQLite indexed queries |
-| Kokoro TTS | 60ms | Text sentence → PCM audio | CPU ONNX inference |
-| ADPCM compression | <5ms | PCM → compressed frame | Standard codec |
-| **Perceived latency** | **440ms** | End of speech → first audio | **Target met** |
+| Stage                   | Target    | Actual Measurement Point      | Optimizations                |
+| ----------------------- | --------- | ----------------------------- | ---------------------------- |
+| ADPCM decompression     | <5ms      | Compressed frame → PCM buffer | Standard codec               |
+| Silero VAD              | <1ms      | Per 200ms chunk               | Optimized PyTorch model      |
+| Moonshine STT           | 80ms      | Audio buffer → text string    | Native streaming, 27M params |
+| Claude Haiku TTFT       | 150ms     | Request sent → first token    | Prompt caching on L1+L3      |
+| Tool execution (if any) | 20ms      | Tool call → JSON result       | SQLite indexed queries       |
+| Kokoro TTS              | 60ms      | Text sentence → PCM audio     | CPU ONNX inference           |
+| ADPCM compression       | <5ms      | PCM → compressed frame        | Standard codec               |
+| **Perceived latency**   | **440ms** | End of speech → first audio   | **Target met**               |
 
 ### 9.2 Complex Query Path (Opus parallel, 20% of interactions)
 
-| Path | Latency | User Experience |
-|------|---------|-----------------|
-| Haiku quick ack | 440ms | "Let me analyze that..." (immediate) |
-| Opus async deep | +2000ms | Detailed analysis (streamed later) |
+| Path                | Latency          | User Experience                                    |
+| ------------------- | ---------------- | -------------------------------------------------- |
+| Haiku quick ack     | 440ms            | "Let me analyze that..." (immediate)               |
+| Opus async deep     | +2000ms          | Detailed analysis (streamed later)                 |
 | **Total perceived** | **440ms + 2.5s** | Feels natural (immediate ack, then thinking pause) |
 
 ### 9.3 Latency Tracking
 
 **Per-stage timing** tracked in `main.py`:
+
 ```python
 latency = {
     "vad_ms": end_silence - start_audio,
@@ -551,6 +562,7 @@ latency = {
 ```
 
 **Exposed via API:**
+
 - `GET /api/status` → JSON with last request latency
 - `GET /health` → Overall system health + avg latency (last 10 requests)
 
@@ -558,18 +570,19 @@ latency = {
 
 ### 10.1 Component Fallback Chain
 
-| Component | Primary | Fallback 1 | Fallback 2 |
-|-----------|---------|------------|------------|
-| STT | Moonshine Streaming Tiny | faster-whisper | Return error to user |
-| TTS | Kokoro-82M | Piper | edge-tts (cloud) |
-| VAD | Silero VAD | Naive RMS silence detection | N/A |
-| LLM (simple) | Haiku 4.5 | Phi-3-mini (if Ollama running) | Return error |
-| LLM (complex) | Opus 4.6 | Haiku 4.5 (degraded mode) | Return error |
-| Memory | sqlite-vec semantic search | SQL text search (LIKE) | Skip memory, continue |
+| Component     | Primary                    | Fallback 1                     | Fallback 2            |
+| ------------- | -------------------------- | ------------------------------ | --------------------- |
+| STT           | Moonshine Streaming Tiny   | faster-whisper                 | Return error to user  |
+| TTS           | Kokoro-82M                 | Piper                          | edge-tts (cloud)      |
+| VAD           | Silero VAD                 | Naive RMS silence detection    | N/A                   |
+| LLM (simple)  | Haiku 4.5                  | Phi-3-mini (if Ollama running) | Return error          |
+| LLM (complex) | Opus 4.6                   | Haiku 4.5 (degraded mode)      | Return error          |
+| Memory        | sqlite-vec semantic search | SQL text search (LIKE)         | Skip memory, continue |
 
 ### 10.2 Error Recovery Patterns
 
 **STT failure:**
+
 ```
 Audio chunks received → Moonshine fails
     ↓
@@ -581,6 +594,7 @@ TTS: "I didn't catch that. Please try again."
 ```
 
 **Tool execution error:**
+
 ```
 Claude calls tool → tool returns {"error": "Database locked"}
     ↓
@@ -592,6 +606,7 @@ Retry tool call (max 3 retries)
 ```
 
 **Extended thinking timeout:**
+
 ```
 Opus running for >10 seconds
     ↓
@@ -610,20 +625,20 @@ Cancel Opus async task
 
 ## 12. Critical Files Reference
 
-| Component | File Path | Purpose |
-|-----------|-----------|---------|
-| Main server | `aegis/main.py` | FastAPI app, WebSocket endpoint, pipeline orchestrator |
-| Claude client | `aegis/claude_client.py` | Streaming, tool loop, model routing, extended thinking |
-| STT | `aegis/stt.py` | Moonshine/faster-whisper wrapper, VAD integration |
-| TTS | `aegis/tts.py` | Kokoro engine with sentence splitting |
-| VAD | `aegis/vad.py` | Silero VAD wrapper, probability-based end detection |
-| Audio codec | `aegis/audio.py` | ADPCM compression, PCM/WAV utils |
-| Tool registry | `aegis/tools/registry.py` | Tool dispatch, schema validation |
-| Health tools | `aegis/tools/health.py` | get_health_context, log_health, analyze_patterns |
-| Wealth tools | `aegis/tools/wealth.py` | track_expense, spending_summary, savings_goal |
-| Profile tool | `aegis/tools/profile.py` | save_user_insight |
-| Health import | `aegis/health_import.py` | Apple Health XML parser, DB loader |
-| Context builder | `aegis/context.py` | build_health_context() for dynamic system prompts |
-| Database | `aegis/db.py` | Schema, seeder, query helpers |
-| Config | `aegis/config.py` | Pydantic settings, env var loading |
-| CLI entry | `aegis/__main__.py` | Subcommands: serve, terminal, import-health, seed |
+| Component       | File Path                 | Purpose                                                |
+| --------------- | ------------------------- | ------------------------------------------------------ |
+| Main server     | `aegis/main.py`           | FastAPI app, WebSocket endpoint, pipeline orchestrator |
+| Claude client   | `aegis/claude_client.py`  | Streaming, tool loop, model routing, extended thinking |
+| STT             | `aegis/stt.py`            | Moonshine/faster-whisper wrapper, VAD integration      |
+| TTS             | `aegis/tts.py`            | Kokoro engine with sentence splitting                  |
+| VAD             | `aegis/vad.py`            | Silero VAD wrapper, probability-based end detection    |
+| Audio codec     | `aegis/audio.py`          | ADPCM compression, PCM/WAV utils                       |
+| Tool registry   | `aegis/tools/registry.py` | Tool dispatch, schema validation                       |
+| Health tools    | `aegis/tools/health.py`   | get_health_context, log_health, analyze_patterns       |
+| Wealth tools    | `aegis/tools/wealth.py`   | track_expense, spending_summary, savings_goal          |
+| Profile tool    | `aegis/tools/profile.py`  | save_user_insight                                      |
+| Health import   | `aegis/health_import.py`  | Apple Health XML parser, DB loader                     |
+| Context builder | `aegis/context.py`        | build_health_context() for dynamic system prompts      |
+| Database        | `aegis/db.py`             | Schema, seeder, query helpers                          |
+| Config          | `aegis/config.py`         | Pydantic settings, env var loading                     |
+| CLI entry       | `aegis/__main__.py`       | Subcommands: serve, terminal, import-health, seed      |

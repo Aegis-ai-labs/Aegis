@@ -21,6 +21,7 @@ aiosqlite==0.20.0
 # Audio processing
 numpy==2.2.1
 scipy==1.15.0
+pydub>=0.25.0
 
 # STT — Moonshine Streaming Tiny (primary)
 moonshine-onnx>=0.1.0

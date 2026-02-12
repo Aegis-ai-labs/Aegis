@@ -10,6 +10,7 @@
 ## Executive Summary
 
 Two approved plans running in parallel:
+
 1. **Restructure Plan** (shiny-wondering-kitten.md): Package rename bridge→aegis, Python 3.10+, CLI, health personalization (~12h, 4 phases)
 2. **Edge-Optimization Plan** (sharded-baking-lark.md): Moonshine STT, Kokoro TTS, Silero VAD, Phi-3 local, sqlite-vec, ADPCM (~20-26h)
 
@@ -30,16 +31,18 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
   ```
 - [ ] **Rename directory**: `mv bridge/ aegis/`
 - [ ] **Update pyproject.toml** (create if missing):
+
   ```toml
   [project]
   name = "aegis1"
   version = "0.1.0"
   requires-python = ">=3.10"
   dependencies = [... from requirements.txt ...]
-  
+
   [project.scripts]
   aegis = "aegis.__main__:main"
   ```
+
 - [ ] **Verify imports**:
   ```bash
   python -c "from aegis.main import app; print('Imports OK')"
@@ -48,35 +51,37 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 ### 1.2 CLI Entry Point
 
 - [ ] **Create `aegis/__main__.py`** with Click-based CLI:
+
   ```python
   import click
-  
+
   @click.group()
   def main():
       """AEGIS1 — Voice health & wealth assistant"""
       pass
-  
+
   @main.command()
   def serve():
       """Start WebSocket bridge server"""
       # uvicorn aegis.main:app
-  
+
   @main.command()
   def terminal():
       """Interactive terminal client (text-only)"""
       # WebSocket client for testing
-  
+
   @main.command()
   @click.argument('xml_path')
   def import_health(xml_path):
       """Import Apple Health XML export"""
       # from aegis.health_import import parse_and_load
-  
+
   @main.command()
   def seed():
       """Seed database with demo data"""
       # from aegis.db import seed_demo_data
   ```
+
 - [ ] **Test CLI**:
   ```bash
   python -m aegis --help
@@ -153,7 +158,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
   async def build_health_context(user_id: int, days: int = 7) -> str:
       """
       Generate dynamic health context for system prompt injection.
-      Returns: 
+      Returns:
       User's recent health context (last 7 days):
       - Sleep: Avg 6.2 hours/night (target: 7+). Notable: 3 days <6 hours.
       - Steps: Avg 8,500/day (good). Lowest: 4,200 (Sunday).
@@ -176,25 +181,26 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 ### 2.2 Dynamic System Prompt Injection
 
 - [ ] **Update `aegis/claude_client.py`** to use 3-layer prompt:
+
   ```python
   # Layer 1: Static cached persona
   system_prompt_1 = """
   You are AEGIS, a voice assistant for a health & wealth tracking pendant.
   Be concise (1-2 sentences), warm, actionable. Use present tense.
   """
-  
+
   # Layer 2: Dynamic health context (regenerated every call)
   health_context = await build_health_context(user_id)
   system_prompt_2 = f"""
   {health_context}
   """
-  
+
   # Layer 3: Static cached tool directives
   system_prompt_3 = """
   Available tools: get_health_context, log_health, analyze_patterns, ...
   Use tools to query/write data. Never hallucinate.
   """
-  
+
   # Combine for Claude request
   system = [
       {"type": "text", "text": system_prompt_1, "cache_control": {"type": "ephemeral"}},
@@ -202,6 +208,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
       {"type": "text", "text": system_prompt_3, "cache_control": {"type": "ephemeral"}},
   ]
   ```
+
 - [ ] **Verify personalized responses**:
   ```bash
   # Seed user with poor sleep data (5 days <6h)
@@ -213,9 +220,10 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 ### 2.3 Apple Health XML Import
 
 - [ ] **Create `aegis/health_import.py`**:
+
   ```python
   from lxml import etree
-  
+
   async def parse_apple_health_xml(xml_path: str) -> dict:
       """
       Parse Apple Health export.xml, extract 5 quantitative types:
@@ -224,7 +232,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
       - weight (HKQuantityTypeIdentifierBodyMass)
       - exercise_minutes (HKQuantityTypeIdentifierAppleExerciseTime)
       - sleep_hours (HKCategoryTypeIdentifierSleepAnalysis)
-      
+
       Returns: {metric: [(timestamp, value), ...], ...}
       """
       tree = etree.parse(xml_path)
@@ -232,7 +240,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
       # XPath queries for each type
       # Group by metric, deduplicate, validate ranges
       return records
-  
+
   async def load_to_database(user_id: int, records: dict):
       """
       INSERT INTO user_health_logs (user_id, metric, value, timestamp)
@@ -240,6 +248,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
       """
       # Batch insert with conflict resolution
   ```
+
 - [ ] **Wire into CLI**:
   ```python
   @main.command()
@@ -308,32 +317,34 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 ### 3.1 Conversation Memory (sqlite-vec)
 
 - [ ] **Create `aegis/memory.py`**:
+
   ```python
   from sqlite_vec import load_extension
-  
+
   class ConversationMemory:
       def __init__(self, db_path: str):
           conn = sqlite3.connect(db_path)
           conn.enable_load_extension(True)
           load_extension(conn, "vec0")
           # CREATE VIRTUAL TABLE conversation_memory USING vec0(...)
-      
+
       async def store(self, user_id: int, role: str, content: str):
           """Store conversation turn with embedding"""
           embedding = await self.get_embedding(content)
           # INSERT INTO conversation_memory
-      
+
       async def recall(self, user_id: int, query: str, limit: int = 5) -> list[dict]:
           """Cosine similarity search"""
           query_embedding = await self.get_embedding(query)
           # SELECT * FROM conversation_memory
           # WHERE vec_distance_cosine(embedding, ?) < 0.3
           # ORDER BY vec_distance_cosine(embedding, ?) LIMIT ?
-      
+
       async def get_embedding(self, text: str) -> list[float]:
           """Get embedding from Anthropic API or local model"""
           # Use text-embedding-3-small (512 dims) or all-MiniLM-L6-v2 (384 dims)
   ```
+
 - [ ] **Integrate into claude_client.py**:
   ```python
   # Before each request:
@@ -355,21 +366,24 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 
 - [ ] **Add Silero VAD** (if not already in Phase 1):
   - **Create `aegis/vad.py`**:
+
     ```python
     import torch
     from silero_vad import load_silero_vad
-    
+
     class SileroVAD:
         def __init__(self, threshold=0.5):
             self.model = load_silero_vad()
             self.threshold = threshold
-        
+
         def is_speech(self, audio_chunk: np.ndarray) -> bool:
             """Returns True if voice detected"""
             prob = self.model(torch.from_numpy(audio_chunk), 16000).item()
             return prob > self.threshold
     ```
+
   - **Integrate into audio pipeline**: End recording when `is_speech() == False` for N consecutive chunks
+
 - [ ] **Upgrade STT to Moonshine** (if not already in Phase 1):
   - Replace `faster-whisper` with `moonshine-onnx` in `aegis/stt.py`
   - Verify 5x speedup: Target 80ms (was ~300ms with faster-whisper)
@@ -378,18 +392,21 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
   - Target 60ms per sentence
 - [ ] **Add ADPCM codec**:
   - **Create `aegis/audio.py`**:
+
     ```python
     def encode_adpcm(pcm_data: bytes) -> bytes:
         """IMA ADPCM encoder (4x compression)"""
         # Standard IMA ADPCM algorithm
-    
+
     def decode_adpcm(adpcm_data: bytes) -> bytes:
         """IMA ADPCM decoder"""
         # Standard IMA ADPCM algorithm
     ```
+
   - **Update WebSocket handlers** in `aegis/main.py`:
     - Receive: ADPCM binary frames → `decode_adpcm()` → PCM
     - Send: PCM → `encode_adpcm()` → ADPCM binary frames
+
 - [ ] **Measure latency per stage**:
   ```python
   latency = {
@@ -407,14 +424,15 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 ### 3.3 Local LLM Integration (Phi-3-mini)
 
 - [ ] **Create `aegis/local_llm.py`**:
+
   ```python
   import httpx
-  
+
   class OllamaClient:
       def __init__(self, model="phi3:mini", url="http://localhost:11434"):
           self.model = model
           self.url = url
-      
+
       async def generate(self, prompt: str) -> str:
           """Single response from local LLM"""
           async with httpx.AsyncClient() as client:
@@ -424,7 +442,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
                   "stream": False
               }, timeout=5.0)
               return resp.json()["response"]
-      
+
       async def is_available(self) -> bool:
           """Health check"""
           try:
@@ -434,6 +452,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
           except:
               return False
   ```
+
 - [ ] **Add simple intent router**:
   ```python
   # In aegis/claude_client.py or aegis/router.py:
@@ -448,12 +467,13 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
       return await claude_client.chat(text)
   ```
 - [ ] **Test Phi-3 routing**:
+
   ```bash
   # Ollama running: ollama serve
   # Terminal test:
   User: "Hi there"
   # Should route to Phi-3 (<200ms)
-  
+
   User: "Analyze my sleep patterns"
   # Should route to Claude Opus (extended thinking)
   ```
@@ -461,6 +481,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 ### 3.4 Parallel Opus Pattern
 
 - [ ] **Implement in `aegis/claude_client.py`**:
+
   ```python
   async def chat_with_parallel_opus(user_text: str):
       """
@@ -474,7 +495,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
           # Quick Haiku ack
           haiku_response = await self.chat_haiku("Acknowledge: " + user_text)
           yield haiku_response
-          
+
           # Opus async
           opus_task = asyncio.create_task(self.chat_opus(user_text))
           opus_response = await opus_task
@@ -484,6 +505,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
           async for chunk in self.chat_haiku(user_text):
               yield chunk
   ```
+
 - [ ] **Verify parallel pattern**:
   ```bash
   # Terminal test:
@@ -555,25 +577,30 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
   - Each scenario: 30-45 seconds
   - Total demo: 2-3 minutes
 - [ ] **Script** (`docs/demo-script.md`):
+
   ```markdown
   # AEGIS1 Demo Script
-  
+
   ## Scenario 1: Sleep Analysis (45s)
+
   [Show pendant] "This is AEGIS1, my voice health assistant."
   [Press button] "Why am I always tired on Mondays?"
   [Wait for response] "Notice the immediate ack, then Opus deep analysis..."
   [Highlight] "Claude knows my actual sleep patterns from my data."
-  
+
   ## Scenario 2: Spending Patterns (40s)
+
   [Press button] "How much did I spend on food this month?"
   [Show tool call] "Claude queries the database with get_spending_summary..."
   [Highlight] "Personalized insights: identifies my restaurant habit."
-  
+
   ## Scenario 3: Savings Goal (45s)
+
   [Press button] "Help me save $5000 in 6 months."
   [Show extended thinking] "Opus reasoning about my spending patterns..."
   [Highlight] "Actionable plan: cut entertainment, increase monthly savings."
   ```
+
 - [ ] **Backup plan**: Pre-record demo video if live demo risks too high
 
 ### 4.4 Documentation Polish
@@ -633,11 +660,12 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
   - GitHub link
   - Demo video link
   - Description (200 words):
+
     ```
     AEGIS1 is a voice-first health & wealth tracking pendant that eliminates
     friction fatigue. Press a button, speak naturally, and get instant insights
     about your body and finances — powered by Claude Opus 4.6.
-    
+
     Key innovations:
     - Body-aware AI: Dynamic system prompts inject your actual health context,
       making responses personalized (not generic)
@@ -648,10 +676,10 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
     - 7 specialized tools: Real database queries, not hallucinated data
     - Apple Health integration: One-time XML import, Claude always knows your
       current state
-    
+
     Target demographic: Ages 30-65 with health awareness & disposable income.
     Addresses: "I download health apps, use them 2 weeks, then abandon."
-    
+
     Tech stack: ESP32 pendant (mic/speaker/button), Python FastAPI bridge,
     Anthropic Claude API (Haiku 4.5 + Opus 4.6), local TTS/STT, sqlite-vec memory.
     ```
@@ -670,27 +698,28 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 
 ## Critical Files Reference
 
-| Component | File Path | Status | Phase |
-|-----------|-----------|--------|-------|
-| Main server | `aegis/main.py` | ✅ Done | Phase 1 |
-| Claude client | `aegis/claude_client.py` | ✅ Done | Phase 1 |
-| Config | `aegis/config.py` | ✅ Done | Phase 1 |
-| Database | `aegis/db.py` | ✅ Done | Phase 1 |
-| Tool registry | `aegis/tools/registry.py` | ✅ Done | Phase 1 |
-| Health tools | `aegis/tools/health.py` | ✅ Done | Phase 1 |
-| Wealth tools | `aegis/tools/wealth.py` | ✅ Done | Phase 1 |
-| Profile tool | `aegis/tools/profile.py` | ⏳ Planned | Phase 2 |
-| CLI entry | `aegis/__main__.py` | ⏳ Planned | Phase 1 |
-| Health context | `aegis/context.py` | ⏳ Planned | Phase 2 |
-| Health import | `aegis/health_import.py` | ⏳ Planned | Phase 2 |
-| STT | `aegis/stt.py` | ⚠️ Partial | Phase 3 |
-| TTS | `aegis/tts.py` | ⚠️ Partial | Phase 3 |
-| VAD | `aegis/vad.py` | ⏳ Planned | Phase 3 |
-| Audio codec | `aegis/audio.py` | ⏳ Planned | Phase 3 |
-| Memory | `aegis/memory.py` | ⏳ Planned | Phase 3 |
-| Local LLM | `aegis/local_llm.py` | ⏳ Planned | Phase 3 |
+| Component      | File Path                 | Status     | Phase   |
+| -------------- | ------------------------- | ---------- | ------- |
+| Main server    | `aegis/main.py`           | ✅ Done    | Phase 1 |
+| Claude client  | `aegis/claude_client.py`  | ✅ Done    | Phase 1 |
+| Config         | `aegis/config.py`         | ✅ Done    | Phase 1 |
+| Database       | `aegis/db.py`             | ✅ Done    | Phase 1 |
+| Tool registry  | `aegis/tools/registry.py` | ✅ Done    | Phase 1 |
+| Health tools   | `aegis/tools/health.py`   | ✅ Done    | Phase 1 |
+| Wealth tools   | `aegis/tools/wealth.py`   | ✅ Done    | Phase 1 |
+| Profile tool   | `aegis/tools/profile.py`  | ⏳ Planned | Phase 2 |
+| CLI entry      | `aegis/__main__.py`       | ⏳ Planned | Phase 1 |
+| Health context | `aegis/context.py`        | ⏳ Planned | Phase 2 |
+| Health import  | `aegis/health_import.py`  | ⏳ Planned | Phase 2 |
+| STT            | `aegis/stt.py`            | ⚠️ Partial | Phase 3 |
+| TTS            | `aegis/tts.py`            | ⚠️ Partial | Phase 3 |
+| VAD            | `aegis/vad.py`            | ⏳ Planned | Phase 3 |
+| Audio codec    | `aegis/audio.py`          | ⏳ Planned | Phase 3 |
+| Memory         | `aegis/memory.py`         | ⏳ Planned | Phase 3 |
+| Local LLM      | `aegis/local_llm.py`      | ⏳ Planned | Phase 3 |
 
 **Legend:**
+
 - ✅ Done: Working, tested
 - ⚠️ Partial: Exists but needs updates (e.g., STT uses faster-whisper, needs Moonshine)
 - ⏳ Planned: Not yet implemented
@@ -699,44 +728,45 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 
 ## Decision Log
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| Feb 12 | Package rename: bridge→aegis | "Portable system" positioning, not middleware |
-| Feb 12 | Python 3.10+ (was 3.9) | Kokoro TTS requirement (breaking change) |
-| Feb 12 | Direct Anthropic SDK (no Pipecat) | Fastest implementation, lowest latency, best Opus showcase |
-| Feb 12 | Moonshine Streaming Tiny STT | 27M params, 26MB, MIT, 5x faster, native streaming |
-| Feb 12 | Kokoro-82M TTS | 82M params, Apache 2.0, Piper archived Oct 2025 |
-| Feb 12 | Silero VAD | <1ms, replaces naive silence counting |
-| Feb 12 | Phi-3-mini via Ollama | <200ms simple queries, offloads Haiku |
-| Feb 12 | sqlite-vec memory | <50ms cosine search, embedded, no API dependency |
-| Feb 12 | ADPCM audio codec | 4x compression, minimal loss, simple implementation |
-| Feb 12 | 7 tools (3H, 3W, 1P) | Quality over quantity, focused demo |
-| Feb 12 | Parallel Opus pattern | Haiku quick ack + async Opus deep analysis |
-| Feb 12 | Dynamic health system prompts | 3-layer injection (static cached + dynamic health + static tools) |
-| Feb 12 | Apple Health XML import | Real user data, one-time CLI import |
-| Feb 12 | 4-phase structure (not 6) | Simplified from edge-optimization plan, prioritizes demo readiness |
+| Date   | Decision                          | Rationale                                                          |
+| ------ | --------------------------------- | ------------------------------------------------------------------ |
+| Feb 12 | Package rename: bridge→aegis      | "Portable system" positioning, not middleware                      |
+| Feb 12 | Python 3.10+ (was 3.9)            | Kokoro TTS requirement (breaking change)                           |
+| Feb 12 | Direct Anthropic SDK (no Pipecat) | Fastest implementation, lowest latency, best Opus showcase         |
+| Feb 12 | Moonshine Streaming Tiny STT      | 27M params, 26MB, MIT, 5x faster, native streaming                 |
+| Feb 12 | Kokoro-82M TTS                    | 82M params, Apache 2.0, Piper archived Oct 2025                    |
+| Feb 12 | Silero VAD                        | <1ms, replaces naive silence counting                              |
+| Feb 12 | Phi-3-mini via Ollama             | <200ms simple queries, offloads Haiku                              |
+| Feb 12 | sqlite-vec memory                 | <50ms cosine search, embedded, no API dependency                   |
+| Feb 12 | ADPCM audio codec                 | 4x compression, minimal loss, simple implementation                |
+| Feb 12 | 7 tools (3H, 3W, 1P)              | Quality over quantity, focused demo                                |
+| Feb 12 | Parallel Opus pattern             | Haiku quick ack + async Opus deep analysis                         |
+| Feb 12 | Dynamic health system prompts     | 3-layer injection (static cached + dynamic health + static tools)  |
+| Feb 12 | Apple Health XML import           | Real user data, one-time CLI import                                |
+| Feb 12 | 4-phase structure (not 6)         | Simplified from edge-optimization plan, prioritizes demo readiness |
 
 ---
 
 ## Risk Mitigation
 
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| Time constraint (26h work, 4 days) | Medium | High | Phase 3 can be simplified (skip memory/local LLM if needed) |
-| Package rename breakage | Low | Medium | Systematic sed, test after rename, revert if critical issues |
-| Moonshine quality issues | Medium | Medium | Keep faster-whisper fallback, upgrade to Base (61M) if needed |
-| Kokoro setup complexity | Low | Medium | Fallback to Piper (still works despite archive), edge-tts backup |
-| Apple Health XML parsing | Medium | Low | Use mock data if real export unavailable, focus on architecture |
-| Phi-3 too slow / unavailable | Low | Low | Graceful fallback to all-Claude routing |
-| sqlite-vec setup issues | Low | Low | Fallback to plain SQLite JSON search |
-| ADPCM quality loss | Low | Medium | Test early, revert to raw PCM if unacceptable |
-| Demo video recording issues | Medium | Medium | Record backup video early, rehearse 5x before final take |
+| Risk                               | Probability | Impact | Mitigation                                                       |
+| ---------------------------------- | ----------- | ------ | ---------------------------------------------------------------- |
+| Time constraint (26h work, 4 days) | Medium      | High   | Phase 3 can be simplified (skip memory/local LLM if needed)      |
+| Package rename breakage            | Low         | Medium | Systematic sed, test after rename, revert if critical issues     |
+| Moonshine quality issues           | Medium      | Medium | Keep faster-whisper fallback, upgrade to Base (61M) if needed    |
+| Kokoro setup complexity            | Low         | Medium | Fallback to Piper (still works despite archive), edge-tts backup |
+| Apple Health XML parsing           | Medium      | Low    | Use mock data if real export unavailable, focus on architecture  |
+| Phi-3 too slow / unavailable       | Low         | Low    | Graceful fallback to all-Claude routing                          |
+| sqlite-vec setup issues            | Low         | Low    | Fallback to plain SQLite JSON search                             |
+| ADPCM quality loss                 | Low         | Medium | Test early, revert to raw PCM if unacceptable                    |
+| Demo video recording issues        | Medium      | Medium | Record backup video early, rehearse 5x before final take         |
 
 ---
 
 ## Existing Code (Do Not Recreate)
 
 **Already working:**
+
 - `aegis/config.py` — Pydantic settings (needs v2 updates in Phase 1)
 - `aegis/db.py` — SQLite schema, CRUD, demo seeding (complete)
 - `aegis/claude_client.py` — Streaming, tool loop, extended thinking (complete)
@@ -749,6 +779,7 @@ This plan merges both into a single 4-phase execution roadmap prioritizing Phase
 - `firmware/src/main.cpp` — ESP32 firmware (tested working, needs Phase 4 ADPCM updates)
 
 **Database schema** (in `aegis/db.py`):
+
 - `users` — User profiles
 - `user_health_logs` — Health metrics (sleep, steps, heart_rate, weight, exercise_minutes)
 - `user_expenses` — Expense tracking (amount, category, description, timestamp)
