@@ -13,7 +13,7 @@ from aegis.config import Settings
 @pytest.fixture
 def test_settings():
     """Fixture providing test settings with in-memory database."""
-    with patch('bridge.config.settings') as mock_settings:
+    with patch('aegis.config.settings') as mock_settings:
         mock_settings.db_path = ":memory:"
         yield mock_settings
 
@@ -61,7 +61,7 @@ class TestDatabaseConnection:
         test_db_path = "/tmp/test_aegis_db.sqlite"
 
         try:
-            with patch('bridge.config.settings') as mock_settings:
+            with patch('aegis.config.settings') as mock_settings:
                 mock_settings.db_path = test_db_path
 
                 conn = get_db()
@@ -242,10 +242,10 @@ class TestSeedDemoData:
             "SELECT timestamp FROM health_logs ORDER BY timestamp DESC LIMIT 1"
         ).fetchall()
 
-        if timestamps:
-            latest_ts = datetime.fromisoformat(timestamps[0][0])
-            # Latest timestamp should be recent (within last 2 days)
-            assert (now - latest_ts).days <= 2
+        assert timestamps, "Expected at least one health_log entry after seeding"
+        latest_ts = datetime.fromisoformat(timestamps[0][0])
+        # Latest timestamp should be recent (within last 2 days)
+        assert (now - latest_ts).days <= 2
 
 
 class TestDatabaseOperations:

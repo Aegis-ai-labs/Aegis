@@ -15,7 +15,17 @@ from .tools.registry import TOOL_DEFINITIONS, dispatch_tool
 
 log = logging.getLogger(__name__)
 
-SYSTEM_PROMPT_BASE = """You are AEGIS, a concise voice assistant for health and wealth management.
+# Model selection constants
+OPUS_TRIGGERS = ["complex", "detailed", "explain", "analyze", "trend", "plan", "why", "correlate"]
+
+def select_model(query: str) -> str:
+    """Select Claude model based on query complexity."""
+    query_lower = query.lower()
+    if any(trigger in query_lower for trigger in OPUS_TRIGGERS):
+        return settings.claude_opus_model
+    return settings.claude_haiku_model
+
+SYSTEM_PROMPT_BASE = """You are Aegis, a concise voice assistant for health and wealth management.
 
 Rules:
 - Keep responses under 2 sentences for simple queries, 3 for complex.
@@ -26,6 +36,9 @@ Rules:
 - For spending, mention totals and biggest categories.
 - If unsure what the user wants, ask one clarifying question.
 - Never mention you are an AI or that you are using tools."""
+
+# Export for test compatibility
+SYSTEM_PROMPT = SYSTEM_PROMPT_BASE
 
 # Regex to split text into sentences for TTS streaming
 SENTENCE_RE = re.compile(r"([^.\!?]+[.\!?]+)\s*")
@@ -46,8 +59,8 @@ class ClaudeClient:
 
     async def get_system_prompt(self) -> str:
         """Build dynamic system prompt with current health context."""
-        db = await get_db()
-        health_context = await build_health_context(db)
+        db = get_db()
+        health_context = build_health_context(db)
         if health_context:
             return f"{SYSTEM_PROMPT_BASE}\n\n{health_context}"
         return SYSTEM_PROMPT_BASE
@@ -70,7 +83,7 @@ class ClaudeClient:
             t0 = time.monotonic()
 
             async with self.client.messages.stream(
-                model=settings.claude_opus_model,
+                model=settings.claude_haiku_model,
                 max_tokens=settings.claude_max_tokens,
                 system=await self.get_system_prompt(),
                 tools=TOOL_DEFINITIONS,
@@ -149,6 +162,22 @@ class ClaudeClient:
             self.conversation_history.append({"role": "user", "content": tool_results})
             self._trim_history()
             # Loop back to get Claude response incorporating tool results
+
+    async def reset_conversation(self):
+        """Clear conversation history (alias for reset)."""
+        await self.reset()
+
+    async def get_full_response(self, message: str) -> str:
+        """Get complete response as a single string (non-streaming)."""
+        chunks = []
+        async for chunk in self.chat(message):
+            chunks.append(chunk)
+        return "".join(chunks)
+
+    async def get_response(self, message: str) -> AsyncGenerator[str, None]:
+        """Get streaming response (alias for chat)."""
+        async for chunk in self.chat(message):
+            yield chunk
 
     async def reset(self):
         """Clear conversation history."""

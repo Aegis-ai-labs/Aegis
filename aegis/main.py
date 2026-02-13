@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from .claude_client import ClaudeClient
 from .config import settings
-from .db import get_db, close_db
+from .db import ensure_db, close_db
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Startup/shutdown: initialize DB, seed demo data if needed."""
     log.info(f"AEGIS1 Bridge starting on {settings.bridge_host}:{settings.bridge_port}")
-    await get_db()  # Initialize DB + auto-seed
+    ensure_db()  # Initialize DB tables + seed demo data
     log.info("Database initialized")
     yield
     await close_db()

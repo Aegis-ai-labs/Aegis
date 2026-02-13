@@ -70,7 +70,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_insights_created ON user_insights(created_at);
     """)
     conn.commit()
-    conn.close()
 
 
 def seed_demo_data(days: int = 30):
@@ -80,7 +79,6 @@ def seed_demo_data(days: int = 30):
     # Check if data already exists
     count = conn.execute("SELECT COUNT(*) FROM health_logs").fetchone()[0]
     if count > 0:
-        conn.close()
         return
 
     now = datetime.now()
@@ -185,7 +183,6 @@ def seed_demo_data(days: int = 30):
             )
 
     conn.commit()
-    conn.close()
 
 
 def ensure_db():

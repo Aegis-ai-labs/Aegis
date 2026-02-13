@@ -4,7 +4,7 @@ from typing import Optional
 import sqlite3
 
 
-async def build_health_context(db: Optional[sqlite3.Connection]) -> str:
+def build_health_context(db: Optional[sqlite3.Connection]) -> str:
     """
     Build a health context string from recent 7-day health data.
 
@@ -48,8 +48,8 @@ async def build_health_context(db: Optional[sqlite3.Connection]) -> str:
         elif metric.lower() in ("heart_rate", "hr", "heart_rate_avg"):
             parts.append(f"HR {avg_value:.0f} bpm")
         elif metric.lower() == "mood":
-            # Use most recent mood
-            parts.append(f"Mood {values[-1]}")
+            # Use most recent mood (values[0] since ORDER BY timestamp DESC)
+            parts.append(f"Mood {values[0]}")
         else:
             parts.append(f"{metric}: {avg_value:.1f}")
 
