@@ -60,7 +60,7 @@ def terminal():
                     click.echo("\nAEGIS1: ", nl=False)
                     while True:
                         try:
-                            msg = await asyncio.wait_for(websocket.recv(), timeout=0.5)
+                            msg = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                             data = json.loads(msg)
                             if data.get("type") == "chunk":
                                 click.echo(data.get("text", ""), nl=False)

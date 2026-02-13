@@ -1,9 +1,12 @@
 """Tool registry — Claude function calling definitions + dispatch."""
 
 import json
+import logging
 from typing import Any
 
 from . import health, wealth
+
+logger = logging.getLogger(__name__)
 
 # Claude tool definitions (Anthropic API format)
 TOOL_DEFINITIONS = [
@@ -120,4 +123,8 @@ async def dispatch_tool(tool_name: str, tool_input: dict) -> str:
     except TypeError as e:
         return json.dumps({"error": f"Invalid arguments for {tool_name}: {e}"})
     except Exception as e:
-        return json.dumps({"error": f"Tool execution failed: {e}"})
+        logger.error(f"Tool execution failed: {tool_name}", exc_info=True)
+        return json.dumps({
+            "error": "Tool execution failed. Check logs for details.",
+            "function": tool_name
+        })

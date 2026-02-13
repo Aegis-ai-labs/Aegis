@@ -3,23 +3,26 @@
 **Date:** 2026-02-12
 **Source:** CodeRabbit AI Code Review
 **Total Critical Bugs:** 8
-**Status:** 6 Fixed ✅ | 2 Remaining ⏳
+**Status:** 8 Fixed ✅ | 0 Remaining ⏳
 
 ---
 
-## Fixed Bugs (6/8)
+## Fixed Bugs (8/8)
 
 ### 1. Test Suite: Patch Path Mismatch (Line 16)
+
 **File:** `tests/test_db.py`
 **Severity:** Critical
 **Impact:** All tests using this fixture were broken, couldn't run
 
 **Before:**
+
 ```python
 with patch('bridge.config.settings') as mock_settings:
 ```
 
 **After:**
+
 ```python
 with patch('aegis.config.settings') as mock_settings:
 ```
@@ -29,16 +32,19 @@ with patch('aegis.config.settings') as mock_settings:
 ---
 
 ### 2. Test Suite: Second Patch Path Mismatch (Line 64)
+
 **File:** `tests/test_db.py`
 **Severity:** Critical
 **Impact:** File-based database tests were broken
 
 **Before:**
+
 ```python
 with patch('bridge.config.settings') as mock_settings:
 ```
 
 **After:**
+
 ```python
 with patch('aegis.config.settings') as mock_settings:
 ```
@@ -48,11 +54,13 @@ with patch('aegis.config.settings') as mock_settings:
 ---
 
 ### 3. Test Suite: Silent Test Pass (Lines 245-248)
+
 **File:** `tests/test_db.py`
 **Severity:** Critical
 **Impact:** Test could pass even if data wasn't seeded correctly
 
 **Before:**
+
 ```python
 if timestamps:
     latest_ts = datetime.fromisoformat(timestamps[0][0])
@@ -60,6 +68,7 @@ if timestamps:
 ```
 
 **After:**
+
 ```python
 assert timestamps, "Expected at least one health_log entry after seeding"
 latest_ts = datetime.fromisoformat(timestamps[0][0])
@@ -71,16 +80,19 @@ assert (now - latest_ts).days <= 2
 ---
 
 ### 4. Context Builder: Async/Sync Mismatch (Line 7)
+
 **File:** `aegis/context.py`
 **Severity:** Critical
 **Impact:** Would block event loop with synchronous sqlite3 calls in async context
 
 **Before:**
+
 ```python
 async def build_health_context(db: Optional[sqlite3.Connection]) -> str:
 ```
 
 **After:**
+
 ```python
 def build_health_context(db: Optional[sqlite3.Connection]) -> str:
 ```
@@ -90,11 +102,13 @@ def build_health_context(db: Optional[sqlite3.Connection]) -> str:
 ---
 
 ### 5. Context Builder: Mood Indexing Bug (Lines 50-52)
+
 **File:** `aegis/context.py`
 **Severity:** Critical
 **Impact:** Displayed oldest mood value instead of most recent
 
 **Before:**
+
 ```python
 elif metric.lower() == "mood":
     # Use most recent mood
@@ -102,6 +116,7 @@ elif metric.lower() == "mood":
 ```
 
 **After:**
+
 ```python
 elif metric.lower() == "mood":
     # Use most recent mood (values[0] since ORDER BY timestamp DESC)
@@ -113,17 +128,20 @@ elif metric.lower() == "mood":
 ---
 
 ### 6. Budget Calculation: December Date Bug (Lines 63-66)
+
 **File:** `aegis/tools/wealth.py`
 **Severity:** Critical
 **Impact:** In December, `days_left` would be negative, breaking budget calculations
 
 **Before:**
+
 ```python
 days_left = (now.replace(month=now.month % 12 + 1, day=1) - timedelta(days=1)).day - now.day
 # Problem: When now.month=12, this becomes now.replace(month=1, day=1) - January of SAME year
 ```
 
 **After:**
+
 ```python
 import calendar  # Added at top of file
 ...
@@ -135,41 +153,36 @@ days_left = last_day_of_month - now.day
 
 ---
 
-## Remaining Bugs (2/8)
+### 7. Main: Timeout Truncating AI Responses (Line 63)
 
-### 7. Main: Timeout Truncating AI Responses (Lines 61-72)
 **File:** `aegis/__main__.py`
 **Severity:** Critical
-**Impact:** 0.5s timeout is too short, truncates AI responses mid-sentence
+**Impact:** 0.5s timeout was too short, truncated AI responses mid-sentence
 
-**Current Code:**
+**Before:**
+
 ```python
-try:
-    response = client.messages.create(
-        model="claude-haiku-4.5",
-        max_tokens=500,
-        messages=[{"role": "user", "content": query}],
-        timeout=0.5  # 500ms - TOO SHORT
-    )
-except TimeoutError:
-    print("Request timed out")
-    return
+timeout=0.5  # 500ms - TOO SHORT
 ```
 
-**Recommended Fix:**
-Increase timeout to 30 seconds or remove entirely:
+**After:**
+
 ```python
-timeout=30.0  # 30 seconds
+timeout=30.0  # 30 seconds - allows full responses
 ```
+
+**Fix:** Increased timeout from 0.5s to 30s to prevent truncation of AI responses.
 
 ---
 
-### 8. Registry: Security Exposure in Error Messages (Lines 120-123)
+### 8. Registry: Security Exposure in Error Messages (Lines 124-128)
+
 **File:** `aegis/tools/registry.py`
 **Severity:** Critical
 **Impact:** Exposes internal function details in error messages (security risk)
 
-**Current Code:**
+**Before:**
+
 ```python
 except Exception as e:
     return {
@@ -178,33 +191,46 @@ except Exception as e:
     }
 ```
 
-**Recommended Fix:**
-Sanitize error messages to prevent information disclosure:
+**After:**
+
 ```python
+# Added imports at top of file (lines 3, 8)
+import logging
+logger = logging.getLogger(__name__)
+
+# Modified exception handler (lines 124-128)
 except Exception as e:
-    logger.error(f"Tool execution failed: {func.__name__}", exc_info=True)
-    return {
+    logger.error(f"Tool execution failed: {tool_name}", exc_info=True)
+    return json.dumps({
         "error": "Tool execution failed. Check logs for details.",
-        "function": func.__name__
-    }
+        "function": tool_name
+    })
 ```
+
+**Fix:** Added logging module import, created logger instance, and sanitized error messages to prevent information disclosure while logging full details internally.
 
 ---
 
 ## Summary
 
 **Completed Fixes:**
+
 - Test suite: All tests can now run correctly (3 bugs fixed)
 - Context builder: Proper sync/async handling and correct data indexing (2 bugs fixed)
 - Budget calculation: Works correctly in all months including December (1 bug fixed)
+- Main timeout: Increased from 0.5s to 30s to prevent AI response truncation (1 bug fixed)
+- Registry security: Added logging and sanitized error messages (1 bug fixed)
 
 **Next Steps:**
-1. Fix timeout in `aegis/__main__.py` (increase to 30s)
-2. Fix error message security in `aegis/tools/registry.py` (sanitize output)
-3. Run full test suite to verify all fixes: `pytest tests/ -v`
-4. Update `CLAUDE.md` with lessons learned
+
+1. Run full test suite to verify all fixes: `pytest tests/ -v`
+2. Commit Bug #8 fix
+3. Update `CLAUDE.md` with lessons learned
+4. Run experiments on poe branch
+5. Merge to main after verification
 
 **Impact Assessment:**
-- **High Priority:** Bugs #7 and #8 should be fixed before production deployment
-- **Test Coverage:** Add tests to prevent regression of these bugs
-- **Documentation:** This file serves as reference for future code reviews
+
+- **All Critical Bugs Fixed:** All 8 bugs identified by CodeRabbit have been resolved ✅
+- **Test Coverage:** Run full test suite to verify all fixes work correctly
+- **Documentation:** This file serves as reference for future code reviews and lessons learned
