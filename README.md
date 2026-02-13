@@ -8,7 +8,7 @@ Built for the Anthropic Claude Code Hackathon (Feb 10-16, 2026)
 
 ## The Problem
 
-Generic AI assistants give generic advice. "Get 8 hours of sleep." "Save money." 
+Generic AI assistants give generic advice. "Get 8 hours of sleep." "Save money."
 
 But YOUR body is unique. Your patterns matter.
 
@@ -19,6 +19,7 @@ But YOUR body is unique. Your patterns matter.
 ### Key Innovation: Body-Aware AI
 
 Instead of generic advice, AEGIS1 says:
+
 - "You averaged 6 hours on weekdays vs 7.9 on weekends — that 2-hour sleep debt explains your weekday fatigue."
 - "You spent $12 on coffee after 5 hours of sleep. Your spending spikes when you're tired."
 - "For 5K training, do lunchtime walks — evening exercise will hurt your already-limited weekday sleep."
@@ -91,12 +92,12 @@ Instead of generic advice, AEGIS1 says:
 
 Our seed data creates **dramatic, visible patterns**:
 
-| Metric | Weekday | Weekend | Impact |
-|--------|---------|---------|--------|
-| Sleep | 6.0h avg | 7.9h avg | 1.9h deficit |
-| Mood | 2.5/5 | 3.8/5 | Clear correlation with sleep |
-| Exercise | 10 min | 45 min | Weekend warrior pattern |
-| Food spending | $8.9/day | $34-41/day | 4-5x spike (dining out) |
+| Metric        | Weekday  | Weekend    | Impact                       |
+| ------------- | -------- | ---------- | ---------------------------- |
+| Sleep         | 6.0h avg | 7.9h avg   | 1.9h deficit                 |
+| Mood          | 2.5/5    | 3.8/5      | Clear correlation with sleep |
+| Exercise      | 10 min   | 45 min     | Weekend warrior pattern      |
+| Food spending | $8.9/day | $34-41/day | 4-5x spike (dining out)      |
 
 **Sleep-Mood Correlation:** 5h sleep → 2.3 mood, 8h sleep → 3.8 mood
 
@@ -107,6 +108,7 @@ This makes Claude responses **dramatically** contextual.
 ## Quick Start
 
 ### 1. Install Dependencies
+
 ```bash
 cd bridge
 python -m venv .venv
@@ -115,12 +117,14 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment
+
 ```bash
 cp .env.example .env
 # Add your ANTHROPIC_API_KEY
 ```
 
 ### 3. Start Bridge Server
+
 ```bash
 python -m bridge.main
 ```
@@ -128,14 +132,17 @@ python -m bridge.main
 Server runs on `http://localhost:8000`
 
 ### 4. Open Dashboard
+
 Navigate to `http://localhost:8000` in browser
 
 ### 5. Test with Terminal
+
 ```bash
 python test_terminal.py
 ```
 
 Try:
+
 - "How did I sleep this week?"
 - "I spent $45 on dinner"
 - "Why am I tired on weekdays?" (triggers Opus!)
@@ -146,12 +153,14 @@ Try:
 ## Technical Highlights
 
 ### Opus 4.6 Showcase
+
 - **Interleaved thinking** enabled with beta header
 - Thinks BETWEEN tool calls (not just before/after)
 - Budget: 10,000 tokens for deep reasoning
 - Visible in logs and dashboard
 
 ### Performance
+
 - **Haiku TTFT:** <200ms (time to first token)
 - **Perceived latency:** ~150ms (streaming + sentence buffering)
 - **Opus latency:** ~2s (acceptable for deep analysis)
@@ -159,6 +168,7 @@ Try:
 - **TTS:** Kokoro (82M, Apache 2.0, high quality)
 
 ### Efficiency
+
 - **Prompt caching:** Static prompt layers cached (saves latency + cost)
 - **Streaming:** Token-by-token delivery (TTS starts immediately)
 - **Smart routing:** Haiku for 80% of queries, Opus for complex 20%
@@ -167,13 +177,13 @@ Try:
 
 ## Code Stats
 
-| Component | Lines |
-|-----------|-------|
-| Bridge server | ~1,900 |
-| Tools | ~400 |
-| Tests | ~450 |
-| Dashboard | ~200 |
-| **Total** | **~2,950** |
+| Component     | Lines      |
+| ------------- | ---------- |
+| Bridge server | ~1,900     |
+| Tools         | ~400       |
+| Tests         | ~450       |
+| Dashboard     | ~200       |
+| **Total**     | **~2,950** |
 
 Well under 5,000 line target.
 
@@ -182,17 +192,20 @@ Well under 5,000 line target.
 ## Judging Criteria Alignment
 
 ### Impact (25%) ✓
+
 - **Target audience:** 30-65 age bracket (health-conscious, financially aware)
 - **Real value:** Personalized health advice beats generic wearables
 - **Cross-domain:** Health + wealth interconnections are unique
 
 ### Opus 4.6 Use (25%) ✓
+
 - **Interleaved thinking:** Beta feature enabled and showcased
 - **Extended thinking:** 10K token budget for deep reasoning
 - **Smart routing:** Opus only when needed (efficient)
 - **Visible differentiation:** Dashboard shows Haiku vs Opus badges
 
 ### Depth & Execution (20%) ✓
+
 - **7 tools** working with real data
 - **True streaming** implementation (not just async create)
 - **Prompt caching** for efficiency
@@ -200,6 +213,7 @@ Well under 5,000 line target.
 - **36 tests** passing
 
 ### Demo (30%) ✓
+
 - **3-minute script** with 4 compelling queries
 - **Split-screen** (person + dashboard)
 - **Visible intelligence:** Thinking badges, tool calls, latency
@@ -251,7 +265,7 @@ Built for the Anthropic Claude Code Hackathon using Claude Opus 4.6's extended t
 
 **Team:** Solo developer showcase
 
-**Time:** 3 days (Feb 13-15, 2026)
+**Build Time:** 3 days (Feb 12-14, 2026)
 
 **Hardware cost:** ~$15 (ESP32 + mic + speaker)
 

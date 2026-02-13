@@ -227,6 +227,8 @@ async def audio_websocket(websocket: WebSocket):
                         # Explicit end-of-speech from ESP32 (button release)
                         if len(audio_buffer) > 3200:
                             await websocket.send_json({"type": "status", "state": "processing"})
+                            # Send thinking tone (consistent with silence-based path)
+                            await websocket.send_bytes(generate_thinking_tone())
                             await process_pipeline(
                                 websocket, claude_client, bytes(audio_buffer)
                             )

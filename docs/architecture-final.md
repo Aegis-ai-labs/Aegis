@@ -31,6 +31,7 @@ AEGIS1: **3-layer dynamic prompt** with real-time health context injection
 ## Data Flow
 
 ### Happy Path (Simple Query)
+
 ```
 User speaks
   ↓
@@ -49,6 +50,7 @@ ESP32 speaker → User hears response (~1.5s total)
 ```
 
 ### Complex Path (Opus Analysis)
+
 ```
 User: "Why am I tired on weekdays?"
   ↓
@@ -72,12 +74,14 @@ Response (~3-4s total, worth the depth)
 ### Why True Streaming Matters
 
 **Before (blocking):**
+
 ```python
 response = await client.messages.create(...)  # Wait for FULL response
 # User waits 500-2000ms before ANYTHING happens
 ```
 
 **After (streaming):**
+
 ```python
 async with client.messages.stream(...) as stream:
     async for event in stream:
@@ -109,21 +113,19 @@ async for chunk in claude_stream:
 ### 7 Tools (3 Health + 3 Wealth + 1 Insight)
 
 **Health Tools:**
+
 1. `get_health_context(days, metrics)` — Retrieve with stats (avg/min/max)
 2. `log_health(metric, value, notes)` — Save + return weekly average
 3. `analyze_health_patterns(query, days)` — Raw data for correlation analysis
 
-**Wealth Tools:**
-4. `track_expense(amount, category, description)` — Log + return weekly total
-5. `get_spending_summary(days, category)` — Spending by category
-6. `calculate_savings_goal(target, months, income)` — Savings plan
+**Wealth Tools:** 4. `track_expense(amount, category, description)` — Log + return weekly total 5. `get_spending_summary(days, category)` — Spending by category 6. `calculate_savings_goal(target, months, income)` — Savings plan
 
-**Meta Tool:**
-7. `save_user_insight(insight)` — Claude saves discovered patterns for session continuity
+**Meta Tool:** 7. `save_user_insight(insight)` — Claude saves discovered patterns for session continuity
 
 ### Tool Routing Intelligence
 
 Sharpened descriptions guide Claude's decision-making:
+
 ```python
 "log_health": "Save a health metric the user reports (e.g., 'I slept 7 hours')"
 # Clear trigger words → Better routing → Fewer wrong tool calls
@@ -143,11 +145,13 @@ kwargs = {
 ```
 
 **What it does:**
+
 - Opus thinks BETWEEN tool calls (not just before/after)
 - Visible in logs: `"Opus thinking [1,234 chars]: Considering weekday sleep patterns..."`
 - Makes multi-tool reasoning coherent
 
 **Why it matters for judges:**
+
 - This is THE Opus 4.6 showcase feature
 - Most demos won't use it (requires beta access knowledge)
 - Visible differentiation in dashboard (thinking badges)
@@ -157,9 +161,11 @@ kwargs = {
 ## Real-Time Dashboard
 
 ### Purpose
+
 Judges need to SEE the intelligence, not just hear it.
 
 ### Features
+
 - **Live transcript:** User + Assistant messages
 - **Model badges:** Haiku (blue) vs Opus (pink)
 - **Tool calls:** Shows `get_health_context({days: 7})` in real-time
@@ -168,16 +174,16 @@ Judges need to SEE the intelligence, not just hear it.
 - **Latency metrics:** STT, LLM, total times
 
 ### Technical Implementation
+
 ```javascript
 // WebSocket receives events
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'thinking') {
-        showThinkingBadge();  // Visible Opus depth
-    }
-    else if (data.type === 'tool_call') {
-        displayToolCall(data.name, data.input);  // Show tools working
-    }
+  const data = JSON.parse(event.data);
+  if (data.type === "thinking") {
+    showThinkingBadge(); // Visible Opus depth
+  } else if (data.type === "tool_call") {
+    displayToolCall(data.name, data.input); // Show tools working
+  }
 };
 ```
 
@@ -188,11 +194,13 @@ ws.onmessage = (event) => {
 ### Goal: Make Patterns Visually Obvious
 
 **Sleep Pattern (weekday vs weekend):**
+
 - Weekdays: 6.0h average (range 5.2-6.9h)
 - Weekends: 7.9h average (range 7.4-8.6h)
 - **1.9 hour difference** (dramatic, not subtle)
 
 **Sleep-Mood Correlation:**
+
 - 5h sleep → 2.3 mood
 - 6h sleep → 2.5 mood
 - 7h sleep → 3.3 mood
@@ -200,6 +208,7 @@ ws.onmessage = (event) => {
 - **Linear, strong correlation** (not random)
 
 **Food Spending (Friday/weekend spike):**
+
 - Weekdays: $8.9/day average
 - Fridays: $41/day average
 - Weekends: $34/day average
@@ -212,13 +221,13 @@ Judges have limited time. Patterns must be **immediately obvious** in demo, not 
 
 ## Performance Benchmarks
 
-| Stage | Target | Achieved |
-|-------|--------|----------|
-| STT | <300ms | ~200ms |
-| Haiku TTFT | <200ms | ~150ms |
-| Haiku total | <1s | ~500ms |
-| Opus total | <5s | ~3s |
-| Perceived latency | <2s | ~1.5s |
+| Stage             | Target | Achieved |
+| ----------------- | ------ | -------- |
+| STT               | <300ms | ~200ms   |
+| Haiku TTFT        | <200ms | ~150ms   |
+| Haiku total       | <1s    | ~500ms   |
+| Opus total        | <5s    | ~3s      |
+| Perceived latency | <2s    | ~1.5s    |
 
 **Perceived latency** = Time from user stops speaking to first audio response.
 
@@ -226,17 +235,18 @@ Judges have limited time. Patterns must be **immediately obvious** in demo, not 
 
 ## Technology Choices & Rationale
 
-| Decision | Choice | Why |
-|----------|--------|-----|
+| Decision  | Choice               | Why                                              |
+| --------- | -------------------- | ------------------------------------------------ |
 | Framework | Direct Anthropic SDK | Full control, lowest latency, best Opus showcase |
-| STT | faster-whisper | Free, local, CPU-friendly, 27M model |
-| TTS | Kokoro (82M) | Apache 2.0, high quality, local, ONNX optimized |
-| Models | Haiku + Opus dual | 80% fast path, 20% deep analysis |
-| Storage | SQLite | Zero setup, embedded, perfect for hackathon |
-| Transport | WebSocket binary | Lowest latency for audio streaming |
-| Dashboard | Vanilla JS | No framework bloat, simple, works |
+| STT       | faster-whisper       | Free, local, CPU-friendly, 27M model             |
+| TTS       | Kokoro (82M)         | Apache 2.0, high quality, local, ONNX optimized  |
+| Models    | Haiku + Opus dual    | 80% fast path, 20% deep analysis                 |
+| Storage   | SQLite               | Zero setup, embedded, perfect for hackathon      |
+| Transport | WebSocket binary     | Lowest latency for audio streaming               |
+| Dashboard | Vanilla JS           | No framework bloat, simple, works                |
 
 **Anti-choices:**
+
 - ❌ Pipecat: Too much abstraction, harder to showcase Opus features
 - ❌ OpenAI TTS: Cost, latency, API dependency
 - ❌ Wake word: Saves time, button-press is fine for demo
@@ -306,6 +316,7 @@ Current status: **36 tests passing, 1 skipped**
 ## Deployment Notes
 
 ### For Demo
+
 1. Ensure ANTHROPIC_API_KEY is set
 2. Start bridge: `python -m bridge.main`
 3. Open dashboard: `http://localhost:8000`
@@ -313,6 +324,7 @@ Current status: **36 tests passing, 1 skipped**
 5. Follow demo-script.md
 
 ### For Production
+
 - [ ] Add authentication (API keys)
 - [ ] Add rate limiting
 - [ ] Deploy bridge to cloud (Railway, Fly.io)
@@ -336,6 +348,7 @@ Current status: **36 tests passing, 1 skipped**
 This is a hackathon project. Fork for your own experiments!
 
 Key extension points:
+
 - Add more tools (calendar, reminders, meditation timer)
 - Integrate real health APIs (Apple Health, Google Fit)
 - Add voice biometrics (stress detection from voice)
@@ -343,4 +356,4 @@ Key extension points:
 
 ---
 
-Built with Claude Code and Opus 4.6 Extended Thinking.
+Built with Claude Code and Opus 4.6 Interleaved Thinking.
