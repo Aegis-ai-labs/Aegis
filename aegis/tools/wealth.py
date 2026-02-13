@@ -1,5 +1,6 @@
 """Wealth/expense tracking tool functions — direct DB calls, <50ms."""
 
+import calendar
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -63,7 +64,8 @@ async def get_budget_status(monthly_budget: float = 3000.0) -> dict[str, Any]:
     by_category = await db.get_spending_by_category(start_of_month, end_date)
     total_spent = sum(by_category.values())
     remaining = monthly_budget - total_spent
-    days_left = (now.replace(month=now.month % 12 + 1, day=1) - timedelta(days=1)).day - now.day
+    last_day_of_month = calendar.monthrange(now.year, now.month)[1]
+    days_left = last_day_of_month - now.day
 
     return {
         "status": "ok",
