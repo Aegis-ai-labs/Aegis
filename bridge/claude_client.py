@@ -18,6 +18,22 @@ from bridge.tools.registry import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
 
+# Import for dashboard broadcasting
+_broadcast_callback = None
+
+def set_dashboard_broadcast(callback):
+    """Set the broadcast callback from main.py to avoid circular imports."""
+    global _broadcast_callback
+    _broadcast_callback = callback
+
+async def _broadcast_if_available(event: dict):
+    """Broadcast to dashboard if callback is set."""
+    if _broadcast_callback:
+        try:
+            await _broadcast_callback(event)
+        except Exception:
+            pass  # Don't let dashboard errors break pipeline
+
 # 3-LAYER SYSTEM PROMPT with Prompt Caching
 # Layer 1: Static persona (CACHEABLE)
 SYSTEM_PROMPT_LAYER1 = """You are Aegis, a voice health and wealth assistant worn as a pendant.
@@ -169,13 +185,19 @@ class ClaudeClient:
                             tool_use_blocks.append(current_tool)
                             current_tool = None
                         elif current_thinking is not None:
-                            # Log thinking block for dashboard visibility
+                            # Log and broadcast thinking block for dashboard visibility
                             thinking_text = "".join(current_thinking)
                             logger.info(
                                 "Opus thinking [%d chars]: %s...",
                                 len(thinking_text),
                                 thinking_text[:200]
                             )
+                            # Broadcast to dashboard
+                            await _broadcast_if_available({
+                                "type": "thinking",
+                                "preview": thinking_text[:200] + "..." if len(thinking_text) > 200 else thinking_text,
+                                "full_length": len(thinking_text)
+                            })
                             current_thinking = None
 
                 # Get final message for history
@@ -203,7 +225,28 @@ class ClaudeClient:
                     tool["name"],
                     json.dumps(tool_input)[:100],
                 )
+
+                # Broadcast tool call to dashboard
+                await _broadcast_if_available({
+                    "type": "tool_call",
+                    "name": tool["name"],
+                    "input": tool_input
+                })
+
                 result = await execute_tool(tool["name"], tool_input)
+
+                # Broadcast tool result to dashboard
+                try:
+                    result_obj = json.loads(result) if isinstance(result, str) else result
+                except:
+                    result_obj = {"raw": str(result)}
+
+                await _broadcast_if_available({
+                    "type": "tool_result",
+                    "name": tool["name"],
+                    "result": result_obj
+                })
+
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool["id"],

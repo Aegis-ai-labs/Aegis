@@ -32,7 +32,12 @@
             margin-bottom: 15px;
             color: #00ff88;
         }
-        .transcript { height: 500px; overflow-y: auto; font-size: 14px; }
+        .transcript { 
+            height: 500px; 
+            overflow-y: auto; 
+            font-size: 14px;
+            scroll-behavior: smooth;
+        }
         .message {
             margin-bottom: 15px;
             padding: 10px;
@@ -43,14 +48,30 @@
         .assistant { background: #1a2a1a; border-left: 3px solid #00ff88; }
         .badge {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            margin-left: 8px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-left: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
-        .badge-haiku { background: #0088ff; color: #fff; }
-        .badge-opus { background: #ff0088; color: #fff; }
+        .badge-haiku {
+            background: linear-gradient(135deg, #0088ff, #00ddff);
+            color: #fff;
+            border: 1px solid #00aaff;
+        }
+        .badge-opus {
+            background: linear-gradient(135deg, #ff0088, #ff66bb);
+            color: #fff;
+            border: 1px solid #ff3399;
+            animation: opus-glow 2s infinite;
+        }
+        @keyframes opus-glow {
+            0%, 100% { box-shadow: 0 2px 8px rgba(255,0,136,0.4); }
+            50% { box-shadow: 0 4px 16px rgba(255,0,136,0.8); }
+        }
         .badge-thinking { background: #ffaa00; color: #000; animation: pulse 1.5s infinite; }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -64,6 +85,19 @@
             border-radius: 4px;
             font-size: 12px;
             font-family: monospace;
+        }
+        .message, .tool-call {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         .health-chart {
             display: grid;
@@ -130,25 +164,72 @@
         const healthStats = document.getElementById('health-stats');
         const healthChart = document.getElementById('health-chart');
 
+        function formatTimestamp() {
+            const now = new Date();
+            return now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function smoothScrollToBottom(element) {
+            element.scrollTo({
+                top: element.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+
+        const MAX_MESSAGES = 100;
+
+        function pruneTranscript() {
+            const messages = transcript.querySelectorAll('.message, .tool-call');
+            if (messages.length > MAX_MESSAGES) {
+                const removeCount = messages.length - MAX_MESSAGES;
+                for (let i = 0; i < removeCount; i++) {
+                    messages[i].remove();
+                }
+            }
+        }
+
         ws.onopen = () => {
             status.textContent = 'Connected';
             status.style.borderColor = '#00ff88';
         };
 
         ws.onclose = () => {
-            status.textContent = 'Disconnected';
+            status.textContent = 'Disconnected (reconnecting...)';
+            status.style.borderColor = '#ffaa00';
+            // Reconnect after 2 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            status.textContent = 'Connection Error';
             status.style.borderColor = '#ff0088';
         };
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+            let data;
+            try {
+                data = JSON.parse(event.data);
+            } catch (e) {
+                console.error('Failed to parse WebSocket message:', event.data);
+                return;
+            }
 
             if (data.type === 'user_message') {
                 const div = document.createElement('div');
                 div.className = 'message user';
-                div.innerHTML = `<strong>User:</strong> ${data.text}`;
+                div.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px">
+                        <strong>User</strong>
+                        <span style="font-size: 11px; color: #666">${formatTimestamp()}</span>
+                    </div>
+                    ${data.text}
+                `;
                 transcript.appendChild(div);
-                transcript.scrollTop = transcript.scrollHeight;
+                pruneTranscript();
+                smoothScrollToBottom(transcript);
             }
 
             else if (data.type === 'assistant_message') {
@@ -160,11 +241,20 @@
                     badge = `<span class="badge badge-${modelType}">${modelType.toUpperCase()}</span>`;
                 }
                 if (data.latency_ms) {
-                    badge += ` <span class="badge" style="background: #333">${Math.round(data.latency_ms)}ms</span>`;
+                    const latency = Math.round(data.latency_ms);
+                    const latencyColor = latency < 1000 ? '#00ff88' : latency < 2000 ? '#ffaa00' : '#ff0088';
+                    badge += ` <span class="badge" style="background: #222; border: 1px solid ${latencyColor}; color: ${latencyColor}">${latency}ms</span>`;
                 }
-                div.innerHTML = `<strong>Aegis:</strong>${badge} ${data.text}`;
+                div.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px">
+                        <div><strong>Aegis</strong>${badge}</div>
+                        <span style="font-size: 11px; color: #666">${formatTimestamp()}</span>
+                    </div>
+                    ${data.text}
+                `;
                 transcript.appendChild(div);
-                transcript.scrollTop = transcript.scrollHeight;
+                pruneTranscript();
+                smoothScrollToBottom(transcript);
             }
 
             else if (data.type === 'thinking') {
@@ -172,15 +262,36 @@
                 div.className = 'message assistant';
                 div.innerHTML = `<span class="badge badge-thinking">THINKING</span> ${data.preview}`;
                 transcript.appendChild(div);
-                transcript.scrollTop = transcript.scrollHeight;
+                pruneTranscript();
+                smoothScrollToBottom(transcript);
             }
 
             else if (data.type === 'tool_call') {
                 const div = document.createElement('div');
                 div.className = 'tool-call';
-                div.textContent = `🔧 ${data.name}(${JSON.stringify(data.input).slice(0, 60)}...)`;
+                div.innerHTML = `<strong>🔧 Tool:</strong> ${data.name}(${JSON.stringify(data.input).slice(0, 80)}...)`;
                 transcript.appendChild(div);
-                transcript.scrollTop = transcript.scrollHeight;
+                pruneTranscript();
+                smoothScrollToBottom(transcript);
+            }
+
+            else if (data.type === 'tool_result') {
+                const div = document.createElement('div');
+                div.className = 'tool-call';
+                let summary = '';
+                if (data.result.status === 'logged') {
+                    summary = `✓ Logged ${data.result.metric || 'data'}`;
+                } else if (data.result.status === 'recorded') {
+                    summary = `✓ Recorded $${data.result.amount} (${data.result.category})`;
+                } else if (data.result.data) {
+                    summary = `✓ Retrieved ${Object.keys(data.result.data).length} metrics`;
+                } else {
+                    summary = `✓ ${data.name} completed`;
+                }
+                div.innerHTML = `<span style="color: #00ff88">${summary}</span>`;
+                transcript.appendChild(div);
+                pruneTranscript();
+                smoothScrollToBottom(transcript);
             }
 
             else if (data.type === 'health_summary') {
@@ -211,6 +322,22 @@
                         healthChart.appendChild(container);
                     });
                 }
+            }
+
+            else if (data.type === 'pipeline_state') {
+                // Update status indicator with visual state
+                const stateColors = {
+                    'idle': '#00ff88',
+                    'processing': '#ffaa00',
+                    'speaking': '#0088ff'
+                };
+                const stateLabels = {
+                    'idle': 'Ready',
+                    'processing': 'Processing...',
+                    'speaking': 'Speaking'
+                };
+                status.textContent = stateLabels[data.state] || data.state;
+                status.style.borderColor = stateColors[data.state] || '#333';
             }
         };
     </script>

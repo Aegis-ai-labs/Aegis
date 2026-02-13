@@ -24,7 +24,7 @@ from bridge.audio import pcm_to_wav, detect_silence
 from bridge.audio_feedback import generate_listening_chime, generate_thinking_tone, generate_success_chime
 from bridge.stt import transcribe_wav
 from bridge.tts import TTSEngine
-from bridge.claude_client import ClaudeClient
+from bridge.claude_client import ClaudeClient, set_dashboard_broadcast
 
 # Configure logging
 logging.basicConfig(
@@ -66,6 +66,9 @@ async def broadcast_to_dashboard(event: dict):
             disconnected.add(client)
     # Clean up disconnected clients
     dashboard_clients.difference_update(disconnected)
+
+# Register dashboard broadcast callback for claude_client
+set_dashboard_broadcast(broadcast_to_dashboard)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -110,7 +113,19 @@ async def dashboard_websocket(websocket: WebSocket):
         from bridge.db import get_db
         from datetime import datetime, timedelta
 
-        health_context = build_health_context(days=7)
+        health_context_str = build_health_context(days=7)
+
+        # Parse health context string into structured stats for dashboard
+        stats = {}
+        if health_context_str and health_context_str != "No recent health data available." and health_context_str != "No recent health or spending data available.":
+            # Parse "Sleep: avg 7.2h | Exercise: 30min | Mood: 8.5" format
+            parts = health_context_str.split(" | ")
+            for part in parts:
+                if ":" in part:
+                    key, value = part.split(":", 1)
+                    stats[key.strip()] = value.strip()
+        else:
+            stats = {"Status": "No recent data"}
 
         # Get last 7 days of sleep for chart
         db = get_db()
@@ -126,7 +141,7 @@ async def dashboard_websocket(websocket: WebSocket):
 
         await websocket.send_json({
             "type": "health_summary",
-            "stats": {"Health Context": health_context},
+            "stats": stats,  # Now properly structured object
             "daily_sleep": daily_sleep,
         })
 
@@ -203,6 +218,7 @@ async def audio_websocket(websocket: WebSocket):
                 if silence_counter >= SILENCE_CHUNKS_TO_STOP and len(audio_buffer) > 3200:
                     logger.info("End of speech: %d bytes, %d ms", len(audio_buffer), int(elapsed_ms))
                     await websocket.send_json({"type": "status", "state": "processing"})
+                    await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
 
                     # Send "thinking" tone
                     await websocket.send_bytes(generate_thinking_tone())
@@ -218,6 +234,7 @@ async def audio_websocket(websocket: WebSocket):
                     is_recording = False
 
                     await websocket.send_json({"type": "status", "state": "idle"})
+                    await broadcast_to_dashboard({"type": "pipeline_state", "state": "idle"})
 
             # Handle JSON control messages
             elif "text" in data:
@@ -227,6 +244,7 @@ async def audio_websocket(websocket: WebSocket):
                         # Explicit end-of-speech from ESP32 (button release)
                         if len(audio_buffer) > 3200:
                             await websocket.send_json({"type": "status", "state": "processing"})
+                            await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
                             # Send thinking tone (consistent with silence-based path)
                             await websocket.send_bytes(generate_thinking_tone())
                             await process_pipeline(
@@ -236,6 +254,7 @@ async def audio_websocket(websocket: WebSocket):
                             silence_counter = 0
                             is_recording = False
                             await websocket.send_json({"type": "status", "state": "idle"})
+                            await broadcast_to_dashboard({"type": "pipeline_state", "state": "idle"})
                     elif msg.get("type") == "reset":
                         claude_client.reset_conversation()
                         audio_buffer.clear()
@@ -301,6 +320,7 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
 
                         log_latency("tts", tts_ms)
                         await websocket.send_json({"type": "status", "state": "speaking"})
+                        await broadcast_to_dashboard({"type": "pipeline_state", "state": "speaking"})
                         # Send PCM in chunks to avoid overwhelming ESP32
                         chunk_size = 6400  # 200ms at 16kHz
                         for i in range(0, len(pcm_audio), chunk_size):
