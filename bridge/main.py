@@ -275,6 +275,63 @@ async def audio_websocket(websocket: WebSocket):
         connections.pop(client_id, None)
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize mDNS service discovery for ESP32 auto-connect."""
+    if not settings.server_discovery_enabled:
+        return
+    
+    try:
+        from zeroconf import ServiceInfo, Zeroconf
+        import socket
+        
+        # Get the local IP address
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        
+        # Register mDNS service
+        service_info = ServiceInfo(
+            "_tcp.local.",
+            f"{settings.mdns_service_name}._tcp.local.",
+            addresses=[socket.inet_aton(local_ip)],
+            port=settings.bridge_port,
+            properties={
+                "path": "/ws/audio",
+                "version": "0.1.0",
+                "model": "AEGIS1",
+            },
+            server=f"{hostname}.local.",
+        )
+        
+        zeroconf = Zeroconf()
+        zeroconf.register_service(service_info)
+        logger.info(
+            "mDNS registered: %s.local:%d (ESP32 can auto-discover)",
+            settings.mdns_service_name, settings.bridge_port
+        )
+        
+        # Store for cleanup
+        app.state.zeroconf = zeroconf
+        app.state.service_info = service_info
+        
+    except ImportError:
+        logger.warning("zeroconf not installed - mDNS discovery disabled. Install: pip install zeroconf")
+    except Exception as e:
+        logger.warning("Failed to register mDNS: %s", str(e))
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up mDNS registration."""
+    if hasattr(app.state, "zeroconf"):
+        try:
+            app.state.zeroconf.unregister_service(app.state.service_info)
+            app.state.zeroconf.close()
+            logger.info("mDNS service unregistered")
+        except Exception as e:
+            logger.warning("Error unregistering mDNS: %s", str(e))
+
+
 async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
     """Full speech-to-speech pipeline with sentence-level streaming."""
     pipeline_start = time.monotonic()
@@ -416,15 +473,45 @@ async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("=" * 60)
-    logger.info("  AEGIS1 Bridge Server Starting")
-    logger.info("=" * 60)
-    logger.info("  Port: %d", settings.bridge_port)
-    logger.info("  Claude: Haiku=%s, Opus=%s", settings.claude_haiku_model, settings.claude_opus_model)
-    logger.info("  STT: faster-whisper (%s)", settings.stt_model)
-    logger.info("  TTS: Piper")
-    logger.info("  WebSocket: ws://%s:%d/ws/audio", settings.bridge_host, settings.bridge_port)
-    logger.info("=" * 60)
+    logger.info("=" * 70)
+    logger.info("  AEGIS1 BRIDGE SERVER STARTING")
+    logger.info("=" * 70)
+    
+    # LLM Configuration
+    if settings.use_local_model:
+        logger.info("  LLM: Ollama (local testing)")
+        logger.info("       URL: %s", settings.ollama_url)
+        logger.info("       Model: %s (FREE - perfect for development)", settings.ollama_model)
+    elif settings.use_gemini_for_testing:
+        logger.info("  LLM: Gemini (budget testing)")
+    else:
+        logger.info("  LLM: Claude (production)")
+        logger.info("       Haiku: %s", settings.claude_haiku_model)
+        logger.info("       Opus: %s", settings.claude_opus_model)
+    
+    # Server Configuration
+    logger.info("  Server:")
+    logger.info("       Host: %s:%d", settings.bridge_host, settings.bridge_port)
+    logger.info("       WebSocket: ws://localhost:%d/ws/audio", settings.bridge_port)
+    logger.info("       Dashboard: http://localhost:%d/", settings.bridge_port)
+    
+    # Audio Configuration
+    logger.info("  Audio:")
+    logger.info("       STT: faster-whisper (%s)", settings.stt_model)
+    logger.info("       TTS: Piper")
+    logger.info("       Sample Rate: %d Hz", settings.sample_rate)
+    
+    # Service Discovery
+    if settings.server_discovery_enabled:
+        logger.info("  mDNS Discovery:")
+        logger.info("       Service: %s.local:%d", settings.mdns_service_name, settings.bridge_port)
+        logger.info("       ESP32 can auto-discover and connect")
+    
+    # Test Mode
+    if settings.test_mode:
+        logger.info("  TEST MODE: API key validation disabled")
+    
+    logger.info("=" * 70)
 
     uvicorn.run(
         "bridge.main:app",

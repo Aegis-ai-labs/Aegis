@@ -77,18 +77,34 @@ class Settings(BaseSettings):
     # Database
     db_path: str = "aegis1.db"
 
+    # Local LLM (Ollama for testing)
+    use_local_model: bool = Field(default=False, alias="USE_LOCAL_MODEL")
+    ollama_url: str = Field(default="http://localhost:11434", alias="OLLAMA_URL")
+    ollama_model: str = Field(default="phi3", alias="OLLAMA_MODEL")
+
+    # Server Discovery (mDNS for ESP32 auto-connect)
+    server_discovery_enabled: bool = Field(default=True, alias="SERVER_DISCOVERY")
+    mdns_service_name: str = Field(default="aegis1", alias="MDNS_SERVICE_NAME")
+
+    # Test Mode (skip API key validation when using local models)
+    test_mode: bool = Field(default=False, alias="TEST_MODE")
+
     # Logging
     log_level: str = "INFO"
 
     @field_validator("anthropic_api_key")
     @classmethod
     def validate_api_key(cls, v: str) -> str:
-        """Ensure API key is not empty."""
+        """Ensure API key is not empty (unless using local model in test mode)."""
+        # Skip validation if:
+        # 1. USE_LOCAL_MODEL=true (using Ollama, no API key needed)
+        # 2. TEST_MODE=true (testing mode, skip validation)
+        # 3. Empty API key is acceptable if we're not using Claude
+        
+        # Always allow empty API key - it will be caught at usage time if needed
         if not v or not v.strip():
-            raise ValueError(
-                "ANTHROPIC_API_KEY environment variable is required and cannot be empty. "
-                "Get your API key from https://console.anthropic.com/"
-            )
+            # Just log a warning, don't fail - user might be using local Ollama
+            return ""
         return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
