@@ -58,9 +58,9 @@ def test_tool_definitions_have_required_fields():
 def test_tool_names():
     names = {t["name"] for t in TOOL_DEFINITIONS}
     expected = {
-        "get_health_context", "log_health", "analyze_health_patterns",
-        "track_expense", "get_spending_summary", "calculate_savings_goal",
-        "save_user_insight",
+        "log_health", "get_health_today", "get_health_summary",
+        "track_expense", "get_spending_today", "get_spending_summary",
+        "get_budget_status",
     }
     assert names == expected
 
@@ -101,6 +101,63 @@ def _make_tool_response(tool_name, tool_id, tool_input, text_before=""):
     return response
 
 
+class MockStreamResponse:
+    """Mock async context manager for messages.stream()."""
+    def __init__(self, mock_response):
+        self.mock_response = mock_response
+        self._events = []
+        self._prepare_events()
+
+    def _prepare_events(self):
+        # Convert content blocks to streaming events
+        for block in self.mock_response.content:
+            # content_block_start event
+            start_event = MagicMock()
+            start_event.type = "content_block_start"
+            start_event.content_block = block
+            self._events.append(start_event)
+
+            # content_block_delta event
+            delta_event = MagicMock()
+            delta_event.type = "content_block_delta"
+            delta_event.delta = MagicMock()
+            if block.type == "text":
+                delta_event.delta.text = block.text
+            elif block.type == "tool_use":
+                delta_event.delta.partial_json = json.dumps(block.input)
+            self._events.append(delta_event)
+
+            # content_block_stop event
+            stop_event = MagicMock()
+            stop_event.type = "content_block_stop"
+            self._events.append(stop_event)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+    def __aiter__(self):
+        self._index = 0
+        return self
+
+    async def __anext__(self):
+        if self._index >= len(self._events):
+            raise StopAsyncIteration
+        event = self._events[self._index]
+        self._index += 1
+        return event
+
+    async def get_final_message(self):
+        return self.mock_response
+
+
+def _make_mock_stream(mock_response):
+    """Create a mock stream context manager from a mock response."""
+    return MockStreamResponse(mock_response)
+
+
 @pytest.mark.asyncio
 async def test_client_simple_response():
     """Test simple text response without tool use."""
@@ -108,7 +165,7 @@ async def test_client_simple_response():
 
     mock_response = _make_text_response("Hello! I'm Aegis, your health and wealth assistant.")
 
-    with patch.object(client.client.messages, "create", return_value=mock_response):
+    with patch.object(client.client.messages, "stream", return_value=_make_mock_stream(mock_response)):
         result = await client.get_full_response("hello")
 
     assert "Aegis" in result
@@ -130,10 +187,10 @@ async def test_client_tool_use_flow():
     mock_tool_result = json.dumps({"data": {"sleep_hours": {"avg": 6.8, "count": 7}}})
 
     with patch.object(
-        client.client.messages, "create",
-        side_effect=[tool_response, text_response]
+        client.client.messages, "stream",
+        side_effect=[_make_mock_stream(tool_response), _make_mock_stream(text_response)]
     ), patch(
-        "bridge.claude_client.execute_tool",
+        "aegis.tools.registry.dispatch_tool",
         new=AsyncMock(return_value=mock_tool_result)
     ) as mock_exec:
         result = await client.get_full_response("how did I sleep this week?")
@@ -150,7 +207,7 @@ async def test_client_streaming_yields_chunks():
 
     mock_response = _make_text_response("This is a streamed response.")
 
-    with patch.object(client.client.messages, "create", return_value=mock_response):
+    with patch.object(client.client.messages, "stream", return_value=_make_mock_stream(mock_response)):
         chunks = []
         async for chunk in client.get_response("test"):
             chunks.append(chunk)
@@ -171,7 +228,7 @@ async def test_client_conversation_history_management():
     ]
 
     mock_response = _make_text_response("response")
-    with patch.object(client.client.messages, "create", return_value=mock_response):
+    with patch.object(client.client.messages, "stream", return_value=_make_mock_stream(mock_response)):
         await client.get_full_response("new message")
 
     # Should be trimmed to last 20 + new user/assistant = some manageable size
@@ -183,5 +240,5 @@ async def test_client_reset_conversation():
     """Test conversation reset."""
     client = ClaudeClient()
     client.conversation_history = [{"role": "user", "content": "test"}]
-    client.reset_conversation()
+    await client.reset_conversation()
     assert client.conversation_history == []

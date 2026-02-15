@@ -1,5 +1,7 @@
 # ESP32 Connection Guide
 
+**See also:** `docs/ESP32_CONNECTION_AND_DEMO.md` — bridge vs aegis, auto-connect, and real-time demo steps.
+
 ## Hardware Setup (Tested Working)
 - **Board:** ESP32 DevKit V1
 - **Mic (INMP441):** BCLK=GPIO13, LRCLK=GPIO14, DIN=GPIO33
@@ -7,16 +9,18 @@
 - **LED:** GPIO2
 - **Button:** GPIO0 (BOOT)
 
-## Bridge Server Connection
+## One Server for Hardware: Bridge
+
+Only **bridge** has the full /ws/audio pipeline and mDNS. **aegis** has a stub /ws/audio; use bridge for ESP32.
 
 ### 1. Start Bridge Server
 ```bash
-cd /Users/apple/Documents/aegis1/.worktrees/bridge-dev
-source .venv/bin/activate
+cd /Users/apple/Documents/aegis1
+source bridge/.venv/bin/activate
 python -m bridge.main
 ```
 
-Server starts on `ws://localhost:8000/ws/audio`
+Server starts on `ws://localhost:8000/ws/audio` and (if SERVER_DISCOVERY=true) registers mDNS `aegis1.local:8000`.
 
 ### 2. ESP32 Configuration
 Update ESP32 firmware with:

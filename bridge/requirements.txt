@@ -1,18 +1,27 @@
-# AEGIS1 Dependencies
+# AEGIS1 Bridge — install once: pip install -r bridge/requirements.txt
 
-# Web Framework
+# Web
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 websockets>=12.0
 
-# Configuration
+# Config
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
 
-# AI/ML
+# LLM — Claude (default)
 anthropic>=0.40.0
+
+# LLM — optional: Gemini (when USE_GEMINI_FOR_TESTING=true)
 google-generativeai>=0.8.0
+
+# LLM — optional: Ollama (when USE_LOCAL_MODEL=true)
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# mDNS — optional: ESP32 auto-discovery (when SERVER_DISCOVERY=true)
+zeroconf>=0.131.0
 
 # Speech-to-Text
 faster-whisper>=1.0.0
@@ -20,17 +29,11 @@ faster-whisper>=1.0.0
 # Text-to-Speech
 piper-tts>=1.2.0
 
-# Audio Processing
+# Audio
 pydub>=0.25.0
 numpy>=1.24.0
 
-# Database
-aiosqlite>=0.20.0
-
-# Development & Testing
+# Dev & tests
 pytest>=8.0.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0
-
-# Utilities
-requests>=2.31.0

@@ -10,8 +10,6 @@ import logging
 import time
 from typing import AsyncGenerator
 
-import google.generativeai as genai
-
 from bridge.config import settings
 from bridge.context import build_health_context
 from bridge.tools.registry import TOOL_DEFINITIONS, execute_tool
@@ -97,6 +95,9 @@ def convert_tools_to_gemini_format(claude_tools: list[dict]) -> list[dict]:
 
 class GeminiClient:
     def __init__(self):
+        import google.generativeai as genai
+        self._genai = genai
+
         if not settings.gemini_api_key:
             raise ValueError(
                 "GEMINI_API_KEY environment variable is required when USE_GEMINI_FOR_TESTING=true"
@@ -228,6 +229,7 @@ class GeminiClient:
 
                 # Send tool results back to model
                 # Build function response parts
+                genai = self._genai
                 function_response_parts = [
                     genai.protos.Part(function_response=genai.protos.FunctionResponse(
                         name=tr["name"],

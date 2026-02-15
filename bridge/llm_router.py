@@ -10,17 +10,19 @@ Routing Priority:
 """
 
 import logging
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 from bridge.config import settings
 from bridge.claude_client import ClaudeClient
-from bridge.gemini_client import GeminiClient
-from bridge.ollama_client import OllamaClient
+
+if TYPE_CHECKING:
+    from bridge.gemini_client import GeminiClient
+    from bridge.ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
 
 
-def get_llm_client() -> Union[OllamaClient, ClaudeClient, GeminiClient]:
+def get_llm_client() -> Union["OllamaClient", ClaudeClient, "GeminiClient"]:
     """
     Factory: Return appropriate LLM client based on configuration.
 
@@ -52,6 +54,7 @@ def get_llm_client() -> Union[OllamaClient, ClaudeClient, GeminiClient]:
         ValueError: If configuration is invalid
     """
     if settings.use_local_model:
+        from bridge.ollama_client import OllamaClient
         logger.info(
             "LLM Router: Using OllamaClient (local testing mode) - %s:%s",
             settings.ollama_url, settings.ollama_model
@@ -80,6 +83,7 @@ def get_llm_client() -> Union[OllamaClient, ClaudeClient, GeminiClient]:
                 "Either set GEMINI_API_KEY or set USE_GEMINI_FOR_TESTING=false"
             )
 
+        from bridge.gemini_client import GeminiClient
         return GeminiClient()
 
     else:
