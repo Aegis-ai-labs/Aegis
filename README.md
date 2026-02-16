@@ -16,11 +16,11 @@ But YOUR body is unique. Your patterns matter.
 
 ## The Solution
 
-**AEGIS1** is a voice-first AI pendant that combines health tracking with wealth management, making advice **contextually intelligent** by understanding YOUR actual patterns.
+**AEGIS** is a voice-first AI pendant that combines health tracking with wealth management, making advice **contextually intelligent** by understanding YOUR actual patterns.
 
 ### Key Innovation: Body-Aware AI
 
-Instead of generic advice, AEGIS1 says:
+Instead of generic advice, AEGIS says:
 
 - "You averaged 6 hours on weekdays vs 7.9 on weekends — that 2-hour sleep debt explains your weekday fatigue."
 - "You spent $12 on coffee after 5 hours of sleep. Your spending spikes when you're tired."
@@ -112,7 +112,7 @@ This makes Claude responses **dramatically** contextual.
 ### 1. Install Dependencies
 
 ```bash
-cd /Users/apple/Documents/aegis1
+cd /Users/apple/Documents/Aegis
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r aegis/requirements.txt
@@ -201,38 +201,6 @@ Well under 5,000 line target. All critical paths tested and working.
 
 ---
 
-## Judging Criteria Alignment
-
-### Impact (25%) ✓
-
-- **Target audience:** 30-65 age bracket (health-conscious, financially aware)
-- **Real value:** Personalized health advice beats generic wearables
-- **Cross-domain:** Health + wealth interconnections are unique
-
-### Opus 4.6 Use (25%) ✓
-
-- **Interleaved thinking:** Beta feature enabled and showcased
-- **Extended thinking:** 10K token budget for deep reasoning
-- **Smart routing:** Opus only when needed (efficient)
-- **Visible differentiation:** Dashboard shows Haiku vs Opus badges
-
-### Depth & Execution (20%) ✓
-
-- **7 tools** working with real data
-- **True streaming** implementation (not just async create)
-- **Prompt caching** for efficiency
-- **Dynamic context** injection (body-aware responses)
-- **36 tests** passing
-
-### Demo (30%) ✓
-
-- **3-minute script** with 4 compelling queries
-- **Split-screen** (person + dashboard)
-- **Visible intelligence:** Thinking badges, tool calls, latency
-- **Clear narrative:** Generic → Contextual intelligence
-
----
-
 ## What Makes This Special
 
 1. **Not just a chatbot** — It's body-aware
@@ -250,7 +218,6 @@ Well under 5,000 line target. All critical paths tested and working.
 - **Local LLM fallback:** Phi-3-mini for offline queries
 - **Voice cloning:** Personalized TTS voice
 - **Multi-user:** Family health tracking
-- **Insurance integration:** Reward healthy behaviors
 
 ---
 
@@ -258,15 +225,15 @@ Well under 5,000 line target. All critical paths tested and working.
 
 ### Real Hardware Photo
 
-![AEGIS1 Hardware](static/images/aegis-hardware.svg)
+![Aegis Hardware](static/images/aegis-hardware.svg)
 
 *ESP32 DevKit V1 with INMP441 microphone and PAM8403 audio amplifier*
 
 ### Prototype Design
 
-![AEGIS1 Prototype Design](static/images/prototype-design.png)
+![Aegis Prototype Design](https://drive.google.com/file/d/1nrIJXQNUKrCXBxdsYR_on5Zz7zzFzpEt/view?usp=sharing)
 
-*AEGIS1 concept and prototype design*
+*Aegis concept and prototype design*
 
 ---
 
@@ -350,4 +317,4 @@ Built for the Anthropic Claude Code Hackathon using Claude Opus 4.6's extended t
 
 ---
 
-**The future of AI is contextual. AEGIS1 is just the beginning.**
+**The future of AI is contextual. AEGIS is just the beginning.**
