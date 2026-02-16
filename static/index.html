@@ -453,7 +453,7 @@
 
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-            const url = `${protocol}://${window.location.host}/ws/text`;
+            const url = `${protocol}://localhost:8000/ws/text`;
 
             ws = new WebSocket(url);
 
