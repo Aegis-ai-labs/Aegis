@@ -8,7 +8,7 @@ Firmware for the AEGIS1 voice pendant. Connects to the AEGIS1 bridge at `BRIDGE_
 
 ## Hardware Photos
 
-![AEGIS1 Real Hardware](../static/images/aegis-hardware.png)
+![AEGIS1 Real Hardware](../static/images/aegis-hardware.svg)
 
 *Real ESP32 pendant with microphone and speaker*
 

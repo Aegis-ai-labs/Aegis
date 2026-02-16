@@ -256,7 +256,7 @@ Well under 5,000 line target. All critical paths tested and working.
 
 ### Real Hardware Photo
 
-![AEGIS1 Hardware](static/images/aegis-hardware.png)
+![AEGIS1 Hardware](static/images/aegis-hardware.svg)
 
 *ESP32 DevKit V1 with INMP441 microphone and PAM8403 audio amplifier*
 

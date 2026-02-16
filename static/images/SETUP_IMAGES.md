@@ -6,8 +6,9 @@ This directory contains images for the AEGIS1 project.
 
 ### 1. Real Hardware Photo
 Place a photo of the actual ESP32 pendant hardware here:
-- **Filename:** `aegis-hardware.jpg` or `aegis-hardware.png`
+- **Filename:** `aegis-hardware.png` or `aegis-hardware.jpg`
 - **Description:** Photo of the assembled ESP32 pendant with mic and speaker
+- **Current:** Placeholder SVG (aegis-hardware.svg) - replace with actual photo
 
 ### 2. Prototype Design
 Download the prototype design from:
