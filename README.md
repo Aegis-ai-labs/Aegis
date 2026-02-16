@@ -223,15 +223,9 @@ Well under 5,000 line target. All critical paths tested and working.
 
 ## Hardware
 
-### Real Hardware Photo
-
-![Aegis Hardware](static/images/aegis-hardware.svg)
-
-*ESP32 DevKit V1 with INMP441 microphone and PAM8403 audio amplifier*
-
 ### Prototype Design
 
-![Aegis Prototype Design](https://drive.google.com/file/d/1nrIJXQNUKrCXBxdsYR_on5Zz7zzFzpEt/view?usp=sharing)
+![Aegis Prototype Design](https://drive.google.com/uc?export=view&id=1nrIJXQNUKrCXBxdsYR_on5Zz7zzFzpEt)
 
 *Aegis concept and prototype design*
 
