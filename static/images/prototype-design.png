@@ -1,0 +1,53 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ff88;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#0088ff;stop-opacity:0.3" />
+    </linearGradient>
+  </defs>
+  
+  <rect width="800" height="600" fill="#0a0a0a"/>
+  
+  <!-- Title -->
+  <text x="400" y="60" font-family="Arial" font-size="28" fill="#00ff88" text-anchor="middle" font-weight="bold">AEGIS1 Prototype Design</text>
+  <text x="400" y="90" font-family="Arial" font-size="14" fill="#888" text-anchor="middle">Wearable AI Assistant Concept</text>
+  
+  <!-- Pendant Design -->
+  <ellipse cx="400" cy="320" rx="150" ry="180" fill="url(#grad1)" stroke="#00ff88" stroke-width="3"/>
+  
+  <!-- Inner circle for mic -->
+  <circle cx="400" cy="280" r="40" fill="#1a1a1a" stroke="#00ff88" stroke-width="2"/>
+  <text x="400" y="285" font-family="Arial" font-size="12" fill="#00ff88" text-anchor="middle">MIC</text>
+  
+  <!-- LED indicator -->
+  <circle cx="400" cy="220" r="8" fill="#00ff88"/>
+  
+  <!-- Speaker grills -->
+  <line x1="350" y1="380" x2="450" y2="380" stroke="#00ff88" stroke-width="2"/>
+  <line x1="350" y1="395" x2="450" y2="395" stroke="#00ff88" stroke-width="2"/>
+  <line x1="350" y1="410" x2="450" y2="410" stroke="#00ff88" stroke-width="2"/>
+  
+  <!-- Button -->
+  <circle cx="400" cy="450" r="15" fill="#0088ff" stroke="#00ff88" stroke-width="2"/>
+  
+  <!-- Labels -->
+  <text x="250" y="225" font-family="Arial" font-size="12" fill="#888">Status LED</text>
+  <line x1="270" y1="220" x2="390" y2="220" stroke="#888" stroke-width="1"/>
+  
+  <text x="500" y="285" font-family="Arial" font-size="12" fill="#888">Voice Input</text>
+  <line x1="480" y1="280" x2="440" y2="280" stroke="#888" stroke-width="1"/>
+  
+  <text x="500" y="395" font-family="Arial" font-size="12" fill="#888">Audio Output</text>
+  <line x1="480" y1="395" x2="450" y2="395" stroke="#888" stroke-width="1"/>
+  
+  <text x="250" y="455" font-family="Arial" font-size="12" fill="#888">Control Button</text>
+  <line x1="320" y1="450" x2="385" y2="450" stroke="#888" stroke-width="1"/>
+  
+  <!-- Features Box -->
+  <rect x="50" y="520" width="700" height="60" fill="#1a1a1a" stroke="#2a2a2a" stroke-width="1" rx="5"/>
+  <text x="400" y="545" font-family="Arial" font-size="14" fill="#00ff88" text-anchor="middle" font-weight="bold">Key Features</text>
+  <text x="400" y="565" font-family="Arial" font-size="11" fill="#888" text-anchor="middle">Voice-First • Body-Aware AI • Real-Time Analysis • Claude Opus 4.6</text>
+  
+  <!-- Note -->
+  <text x="400" y="595" font-family="Arial" font-size="10" fill="#666" text-anchor="middle" font-style="italic">Download actual prototype design from Google Drive link - See static/images/SETUP_IMAGES.md</text>
+</svg>

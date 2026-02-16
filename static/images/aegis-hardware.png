@@ -1,0 +1,25 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="600" fill="#1a1a1a"/>
+  <rect x="50" y="50" width="700" height="500" fill="#0a0a0a" stroke="#00ff88" stroke-width="2"/>
+  
+  <!-- ESP32 Board -->
+  <rect x="250" y="200" width="300" height="180" fill="#2a2a2a" stroke="#00ff88" stroke-width="1" rx="5"/>
+  <text x="400" y="240" font-family="Arial" font-size="16" fill="#00ff88" text-anchor="middle">ESP32 DevKit V1</text>
+  
+  <!-- Microphone -->
+  <circle cx="200" cy="280" r="30" fill="#0088ff" stroke="#00ff88" stroke-width="1"/>
+  <text x="200" y="340" font-family="Arial" font-size="14" fill="#00ff88" text-anchor="middle">INMP441</text>
+  <text x="200" y="360" font-family="Arial" font-size="12" fill="#888" text-anchor="middle">Microphone</text>
+  
+  <!-- Speaker -->
+  <circle cx="600" cy="280" r="30" fill="#0088ff" stroke="#00ff88" stroke-width="1"/>
+  <text x="600" y="340" font-family="Arial" font-size="14" fill="#00ff88" text-anchor="middle">PAM8403</text>
+  <text x="600" y="360" font-family="Arial" font-size="12" fill="#888" text-anchor="middle">Speaker Amp</text>
+  
+  <!-- Title -->
+  <text x="400" y="100" font-family="Arial" font-size="24" fill="#00ff88" text-anchor="middle" font-weight="bold">AEGIS1 Real Hardware</text>
+  <text x="400" y="130" font-family="Arial" font-size="14" fill="#888" text-anchor="middle">ESP32 Voice Pendant</text>
+  
+  <!-- Note -->
+  <text x="400" y="530" font-family="Arial" font-size="12" fill="#888" text-anchor="middle">Placeholder - Replace with actual hardware photo</text>
+</svg>

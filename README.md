@@ -252,6 +252,22 @@ Well under 5,000 line target. All critical paths tested and working.
 
 ---
 
+## Hardware
+
+### Real Hardware Photo
+
+![AEGIS1 Hardware](static/images/aegis-hardware.png)
+
+*ESP32 DevKit V1 with INMP441 microphone and PAM8403 audio amplifier*
+
+### Prototype Design
+
+![AEGIS1 Prototype Design](static/images/prototype-design.png)
+
+*AEGIS1 concept and prototype design*
+
+---
+
 ## Built With
 
 - **Claude Opus 4.6** (interleaved thinking) + Haiku 4.5 (speed)
