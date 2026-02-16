@@ -646,6 +646,27 @@
             }, 5000);
         }
 
+        // Add sample demo data for testing showcase
+        function loadDemoConversations() {
+            const conversations = [
+                { role: 'user', text: 'How did I sleep this week?' },
+                { role: 'assistant', text: 'Based on your sleep logs, you averaged 6.8 hours per night over the last 7 days. Sleep breakdown: Mon-Wed 6.2h, Thu-Fri 6.1h, Sat-Sun 8.1h. You\'re sleeping about 1-2 hours more on weekends.' },
+                { role: 'user', text: 'Why am I tired on weekdays?' },
+                { role: 'assistant', text: 'Your weekday fatigue correlates directly with your sleep deficit. You average 2 hours less sleep Monday-Friday compared to weekends. Additionally, your coffee spending increases 34% on days when you sleep less than 6 hours, suggesting you\'re compensating. Recommendation: Prioritize consistent sleep timing, even on weekends, to stabilize your energy.' },
+                { role: 'user', text: 'What\'s my spending breakdown?' },
+                { role: 'assistant', text: 'Monthly spending: Food $340 (27%), Coffee $120 (10%), Transport $210 (17%), Entertainment $280 (23%), Shopping $190 (15%), Other $100 (8%). Total: $1,240. Your coffee spending aligns with low-sleep days, suggesting a health-spending correlation.' },
+                { role: 'user', text: 'Help me plan a 5K training program' },
+                { role: 'assistant', text: 'Building a personalized 5K plan based on your data: Current average steps: 8,234/day (good baseline). Sleep quality impacts recovery, so prioritize consistent sleep. With your caffeine dependency during low-sleep days, recommend: Week 1-2: Build to 15 miles/week with 2 rest days. Week 3-4: Increase to 18 miles/week. Your budget allows for proper nutrition. Training starts Monday with your higher sleep trend. Duration: 8-10 weeks to race-ready.' },
+            ];
+
+            // Load demo conversations on startup
+            conversations.forEach((conv, index) => {
+                setTimeout(() => {
+                    addConversationLine(conv.text, conv.role);
+                }, index * 200);  // Stagger loading for effect
+            });
+        }
+
         // Listen to chat messages and display only conversations
         function setupConversationMonitoring() {
             // Intercept user messages sent to backend
@@ -674,6 +695,9 @@
         monitorBackend();
         monitorBridge();
         setupConversationMonitoring();
+
+        // Load demo data on page load
+        window.addEventListener('load', loadDemoConversations);
     </script>
 </body>
 </html>
