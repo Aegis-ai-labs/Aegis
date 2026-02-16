@@ -571,31 +571,25 @@
         // Connect WebSocket when page loads
         connectWebSocket();
 
-        // Dashboard: Monitor backend and bridge connections
+        // Dashboard: Show only conversation messages (user & AEGIS)
         const transcriptionFeed = document.getElementById('transcription-feed');
         const backendStatusDot = document.getElementById('backend-status');
         const bridgeStatusDot = document.getElementById('bridge-status');
         let backendConnected = false;
         let bridgeConnected = false;
 
-        function addTranscriptionLine(text, type = 'info') {
+        function addConversationLine(text, role) {
             const line = document.createElement('div');
             const timestamp = new Date().toLocaleTimeString();
             let prefix = '';
             let color = 'var(--text-muted)';
 
-            if (type === 'mic') {
-                prefix = '[MIC] ';
-                color = '#ffaa00';
-            } else if (type === 'stt') {
-                prefix = '[STT] ';
-                color = 'var(--primary)';
-            } else if (type === 'claude') {
-                prefix = '[CLAUDE] ';
+            if (role === 'user') {
+                prefix = 'You: ';
                 color = 'var(--secondary)';
-            } else if (type === 'tts') {
-                prefix = '[TTS] ';
-                color = '#00ff00';
+            } else if (role === 'assistant') {
+                prefix = 'AEGIS: ';
+                color = 'var(--primary)';
             }
 
             line.style.color = color;
@@ -603,9 +597,9 @@
             transcriptionFeed.appendChild(line);
             transcriptionFeed.scrollTop = transcriptionFeed.scrollHeight;
 
-            // Keep last 50 lines
+            // Keep last 100 lines
             const lines = transcriptionFeed.querySelectorAll('div');
-            if (lines.length > 50) {
+            if (lines.length > 100) {
                 lines[0].remove();
             }
         }
@@ -619,7 +613,6 @@
                             backendConnected = true;
                             backendStatusDot.classList.add('connected');
                             backendStatusDot.classList.remove('disconnected');
-                            addTranscriptionLine('Backend connected (port 8000)', 'info');
                         }
                     })
                     .catch(() => {
@@ -627,7 +620,6 @@
                             backendConnected = false;
                             backendStatusDot.classList.remove('connected');
                             backendStatusDot.classList.add('disconnected');
-                            addTranscriptionLine('Backend disconnected', 'info');
                         }
                     });
             }, 5000);
@@ -642,7 +634,6 @@
                             bridgeConnected = true;
                             bridgeStatusDot.classList.add('connected');
                             bridgeStatusDot.classList.remove('disconnected');
-                            addTranscriptionLine('Bridge connected (port 3000)', 'info');
                         }
                     })
                     .catch(() => {
@@ -650,31 +641,30 @@
                             bridgeConnected = false;
                             bridgeStatusDot.classList.remove('connected');
                             bridgeStatusDot.classList.add('disconnected');
-                            addTranscriptionLine('Bridge disconnected', 'info');
                         }
                     });
             }, 5000);
         }
 
-        // Listen to chat messages and display on transcription feed
-        function setupTranscriptionMonitoring() {
-            // Intercept messages sent to backend and show them in feed
+        // Listen to chat messages and display only conversations
+        function setupConversationMonitoring() {
+            // Intercept user messages sent to backend
             const originalWebSocketSend = WebSocket.prototype.send;
             WebSocket.prototype.send = function(data) {
                 try {
                     const msg = JSON.parse(data);
-                    if (msg.text) {
-                        addTranscriptionLine(msg.text, 'mic');
+                    if (msg.text && !msg.text.startsWith('/')) {  // Exclude commands
+                        addConversationLine(msg.text, 'user');
                     }
                 } catch (e) {}
                 return originalWebSocketSend.call(this, data);
             };
 
-            // Listen to received messages
+            // Listen to AEGIS responses
             const originalAddMessage = window.addMessage;
             window.addMessage = function(text, role) {
-                if (role === 'assistant') {
-                    addTranscriptionLine(text, 'claude');
+                if (role === 'assistant' && text.trim()) {
+                    addConversationLine(text, 'assistant');
                 }
                 return originalAddMessage.call(this, text, role);
             };
@@ -683,9 +673,7 @@
         // Start monitoring
         monitorBackend();
         monitorBridge();
-        setupTranscriptionMonitoring();
-
-        addTranscriptionLine('Dashboard ready. Monitoring connections...', 'info');
+        setupConversationMonitoring();
     </script>
 </body>
 </html>
