@@ -10,9 +10,11 @@ Firmware for the AEGIS1 voice pendant. Connects to the AEGIS1 bridge at `BRIDGE_
 
 - **Board:** ESP32 DevKit V1 (DOIT)
 - **Mic:** INMP441 I2S (BCLK=13, LRCLK=14, DIN=33)
-- **Speaker:** PAM8403 on DAC1 (GPIO 25)
+- **Speaker:** PAM8403 on DAC1 (GPIO 25). Connect speaker to amp **right channel** (R+ and R-) for mono output.
 - **LED:** GPIO 2
 - **Button:** GPIO 0 (BOOT)
+
+**Volume / crackling:** The PAM8403 is strong; a small speaker can sound cracked or distorted. In `config.h`: (1) `PLAYBACK_VOLUME_PERCENT` (default 20) sets overall level—lower if still too loud, raise if too quiet. (2) `PLAYBACK_MAX_PEAK_PERCENT` (default 70) caps peaks so the DAC never hits full scale, which reduces harsh clipping and crackling. Use 100 for no cap.
 
 ---
 
@@ -42,7 +44,7 @@ Firmware for the AEGIS1 voice pendant. Connects to the AEGIS1 bridge at `BRIDGE_
    ```bash
    pio device monitor
    ```
-   Expect: `[OK] WiFi ...`, `[OK] AEGIS1 bridge connected` after the bridge is running.
+   Expect: `Version: 1.0.0` (or current `AEGIS1_FIRMWARE_VERSION` in `src/main.cpp`), then `[OK] WiFi ...`, `[OK] AEGIS1 bridge connected` after the bridge is running. Use the version line to confirm which build is flashed.
 
 ---
 

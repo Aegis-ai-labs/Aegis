@@ -58,6 +58,8 @@ aegis1/
 | RED phase tests index | `docs/INDEX.md` (RED_PHASE_*) |
 | ESP32 connection and testing | `docs/esp32-connection-guide.md` |
 | Bridge vs aegis, auto-connect, real-time demo | `docs/ESP32_CONNECTION_AND_DEMO.md` |
+| What is bridge vs aegis, who does what, LLM order | `docs/BRIDGE_VS_AEGIS.md` |
+| System overview, model I/O, each-side docs index | `docs/SYSTEM_OVERVIEW.md` |
 | High-level product and architecture | Root `README.md` |
 
 ---

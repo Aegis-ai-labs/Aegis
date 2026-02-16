@@ -99,8 +99,9 @@ LOG_LEVEL=INFO
 # Audio
 SAMPLE_RATE=16000
 
-# STT (Moonshine Streaming Tiny)
+# STT (Moonshine Streaming Tiny / faster-whisper fallback)
 STT_BEAM_SIZE=1                   # Beam search width (1=greedy)
+STT_VAD_FILTER=true               # Set false if VAD strips all audio and STT returns empty often (quiet env / low mic)
 SILENCE_CHUNKS_TO_STOP=8          # Chunks of silence to end recording
 MAX_RECORDING_TIME_MS=10000        # Max utterance length (10s)
 

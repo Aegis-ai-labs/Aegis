@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     - STT_DEVICE: STT device (default: cpu)
     - STT_LANGUAGE: STT language (default: en)
     - STT_BEAM_SIZE: STT beam size (default: 1)
+    - STT_VAD_FILTER: Use faster-whisper VAD (default: true); set false if VAD strips all audio
     - SILENCE_CHUNKS_TO_STOP: Silence detection threshold (default: 8)
     - MAX_RECORDING_TIME_MS: Max recording time in ms (default: 10000)
     """
@@ -69,6 +70,8 @@ class Settings(BaseSettings):
     stt_device: str = "cpu"
     stt_language: str = "en"
     stt_beam_size: int = 1
+    # Set STT_VAD_FILTER=false if VAD strips all audio and STT returns empty often
+    stt_vad_filter: bool = Field(default=True, alias="STT_VAD_FILTER")
 
     # Voice activity / recording
     silence_chunks_to_stop: int = 8

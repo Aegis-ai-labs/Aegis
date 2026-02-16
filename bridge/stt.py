@@ -60,7 +60,7 @@ def transcribe_wav(audio_wav_bytes: bytes) -> Optional[str]:
                 f.name,
                 beam_size=settings.stt_beam_size,
                 language=settings.stt_language or None,
-                vad_filter=True,
+                vad_filter=settings.stt_vad_filter,
             )
             parts = [seg.text.strip() for seg in segments if seg.text]
             text = " ".join(parts).strip()

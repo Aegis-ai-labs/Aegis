@@ -19,7 +19,7 @@
 - [ ] VCC (5V)      → USB 5V Power
 - [ ] IN+           → GPIO 25 (with 10k resistor)
 - [ ] IN-           → ESP32 GND
-- [ ] OUT+/OUT-     → Speaker wires
+- [ ] Speaker       → Amp right channel (R+ and R-) for mono
 
 ---
 

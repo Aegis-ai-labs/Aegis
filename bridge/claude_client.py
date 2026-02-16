@@ -105,7 +105,7 @@ def select_model(user_text: str) -> str:
 
 class ClaudeClient:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.conversation_history: list[dict] = []
 
     def reset_conversation(self):

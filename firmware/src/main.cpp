@@ -8,6 +8,8 @@
  * Source: Adapted from AEGIS prototype test_5_openclaw_voice (flashed and tested on hardware).
  */
 
+#define AEGIS1_FIRMWARE_VERSION "1.0.0"
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
@@ -35,13 +37,21 @@ static int16_t play_buf[PLAY_BUF_SAMPLES];
 static size_t play_head = 0;
 static size_t play_len = 0;
 
+// Max signed 8-bit magnitude after volume + peak cap (127 * PLAYBACK_MAX_PEAK_PERCENT / 100)
+#define PLAY_PEAK ((127 * PLAYBACK_MAX_PEAK_PERCENT) / 100)
+
 static void play_pcm_chunk() {
     if (play_len < PLAY_CHUNK) return;
     for (int i = 0; i < PLAY_CHUNK; i++) {
         int16_t s = play_buf[play_head];
         play_head++;
         play_len--;
-        uint8_t dac_val = (uint8_t)(((int32_t)(s >> 8) + 128) & 0xFF);
+        // Scale down for small speaker (PAM8403 strong vs weak speaker; avoids crackling)
+        int32_t scaled = ((int32_t)s * PLAYBACK_VOLUME_PERCENT) / 100;
+        // Cap peak so DAC never exceeds PLAY_PEAK; prevents harsh clipping
+        if (scaled > PLAY_PEAK) scaled = PLAY_PEAK;
+        if (scaled < -PLAY_PEAK) scaled = -PLAY_PEAK;
+        uint8_t dac_val = (uint8_t)((int32_t)scaled + 128);
         dacWrite(AMP_DAC_PIN, dac_val);
         delayMicroseconds(62);  // ~16kHz
     }
@@ -121,6 +131,7 @@ void setup() {
     digitalWrite(LED_PIN, LOW);
 
     Serial.println("\n=== AEGIS1 Voice Firmware (Main) ===");
+    Serial.printf("Version: %s\n", AEGIS1_FIRMWARE_VERSION);
     Serial.printf("Target: %s:%d/ws/audio\n", BRIDGE_HOST, BRIDGE_PORT);
     Serial.println("Flow: Mic -> Bridge -> STT/Claude/TTS -> Speaker\n");
 

@@ -25,7 +25,7 @@ Use this before flashing. Full details: `HARDWARE_SETUP_GUIDE.md`, `HARDWARE_QUI
 - [ ] VCC (5V) → USB 5V  
 - [ ] IN+ → GPIO 25 (via 10k resistor)  
 - [ ] IN- → GND  
-- [ ] OUT+/OUT- → speaker  
+- [ ] Speaker → amp **right channel** (R+ and R-) for mono  
 
 ### Optional
 
@@ -68,6 +68,12 @@ If you prefer Arduino IDE:
 2. Run `pio run -t upload` (or Sketch → Upload in Arduino IDE).  
 3. Wait for "Leaving... Hard resetting...".  
 4. Press RST to run.
+
+### 2.5 Firmware version and boot time
+
+- **Version:** On boot, Serial (115200) shows `Version: 1.0.0` (or the value of `AEGIS1_FIRMWARE_VERSION` in `firmware/src/main.cpp`). Use this to confirm which build is running after a reflash.
+- **Reflashing:** Use the steps in §2.1–2.4. After reflash, open Serial Monitor to confirm the version line and that WiFi/WebSocket connect messages appear.
+- **Slow boot (~100 s):** If startup feels very slow, capture Serial from power-on. Check WiFi connect and DHCP timing; there are no long blocking delays in the firmware, so long boot usually indicates network or DHCP issues.
 
 ---
 
@@ -146,3 +152,4 @@ Expect (GREEN): 13 passed. If any fail, treat as RED and fix bridge or firmware 
 - **WiFi fails:** Check SSID/password (case-sensitive).  
 - **Server not found (mDNS):** Use bridge IP in firmware: `ws://<IP>:8000/ws/audio`.  
 - **Tests segfault:** Run full suite inside bridge venv (`source bridge/.venv/bin/activate`).
+- **STT always empty / "VAD filter removed" in logs:** Set `STT_VAD_FILTER=false` in `.env` or export it. Use when the mic is quiet or the environment is very quiet so faster-whisper VAD does not strip all audio.

@@ -26,6 +26,12 @@
 // PAM8403 Analog Amplifier (DAC output)
 #define AMP_DAC_PIN     25  // GPIO 25 = DAC1
 
+
+// Playback volume: reduce if amp is too loud for small speaker (1-100 percent)
+#define PLAYBACK_VOLUME_PERCENT  20  // 20% = safe for small speaker; raise if too quiet
+// Max peak: cap output so DAC never exceeds this % of full scale (reduces crackling)
+#define PLAYBACK_MAX_PEAK_PERCENT 70  // 70% = gentle limit; use 100 for no cap
+
 // LED and Button Pins
 #define LED_PIN         2   // Built-in blue LED
 #define BUTTON_PIN      0   // BOOT button (built-in)

@@ -13,6 +13,7 @@ import logging
 import re
 import time
 from collections import defaultdict
+from pathlib import Path
 
 import anthropic
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -22,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from bridge.config import settings
 from bridge.db import ensure_db
 from bridge.audio import pcm_to_wav, detect_silence
-from bridge.audio_feedback import generate_listening_chime, generate_thinking_tone, generate_success_chime
+from bridge.audio_feedback import generate_thinking_tone, generate_success_chime
 from bridge.stt import transcribe_wav
 from bridge.tts import TTSEngine
 from bridge.llm_router import get_llm_client
@@ -75,10 +76,15 @@ set_claude_dashboard_broadcast(broadcast_to_dashboard)
 set_gemini_dashboard_broadcast(broadcast_to_dashboard)
 
 
+# Project root (parent of bridge package) for static files
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
     """Serve the dashboard HTML."""
-    with open("static/index.html") as f:
+    index_path = _STATIC_DIR / "index.html"
+    with open(index_path) as f:
         return f.read()
 
 
@@ -99,7 +105,9 @@ async def api_status():
                 "count": len(measurements),
             }
     return {
+        "esp32_connected": len(connections) > 0,
         "connections": len(connections),
+        "esp32_clients": list(connections.keys()),
         "latency": stats,
     }
 
@@ -192,7 +200,13 @@ async def audio_websocket(websocket: WebSocket):
         })
 
         while True:
-            data = await websocket.receive()
+            try:
+                data = await websocket.receive()
+            except RuntimeError as e:
+                if "disconnect" in str(e).lower():
+                    logger.info("ESP32 disconnected: %s", client_id)
+                    break
+                raise
 
             # Handle binary audio data
             if "bytes" in data:
@@ -203,8 +217,7 @@ async def audio_websocket(websocket: WebSocket):
                     is_recording = True
                     recording_start = time.monotonic()
                     logger.debug("Recording started")
-                    # Send "listening" chime
-                    await websocket.send_bytes(generate_listening_chime())
+                    # No listening chime on first chunk: speaker only outputs after user speaks and pipeline runs
 
                 # Silence detection
                 is_silent = detect_silence(pcm_chunk, threshold=500)
@@ -269,6 +282,11 @@ async def audio_websocket(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("ESP32 disconnected: %s", client_id)
+    except RuntimeError as e:
+        if "disconnect" in str(e).lower():
+            logger.info("ESP32 disconnected: %s", client_id)
+        else:
+            logger.error("WebSocket error: %s", e, exc_info=True)
     except Exception as e:
         logger.error("WebSocket error: %s", e, exc_info=True)
     finally:
@@ -289,10 +307,11 @@ async def startup_event():
         hostname = socket.gethostname()
         local_ip = socket.gethostbyname(hostname)
         
-        # Register mDNS service
+        # Register mDNS service (type must start with '_' per RFC 6763)
+        service_type = f"_{settings.mdns_service_name}._tcp.local."
         service_info = ServiceInfo(
-            "_tcp.local.",
-            f"{settings.mdns_service_name}._tcp.local.",
+            service_type,
+            f"{settings.mdns_service_name}.{service_type}",
             addresses=[socket.inet_aton(local_ip)],
             port=settings.bridge_port,
             properties={

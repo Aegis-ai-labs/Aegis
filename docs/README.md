@@ -9,6 +9,8 @@ Complete technical documentation for the AEGIS1 voice health & wealth assistant 
 - **[Tech Context](memory-bank/techcontext.md)** — Tech stack overview, setup instructions, environment variables
 
 ### Architecture & Design
+- **[Bridge vs Aegis](BRIDGE_VS_AEGIS.md)** — What is bridge vs aegis, who does tool calling, LLM order (Anthropic then Ollama)
+- **[System Overview](SYSTEM_OVERVIEW.md)** — End-to-end flow, model input/output, where each side (ESP32, bridge, model, dashboard) is documented
 - **[Architecture](architecture.md)** — System design, data models, streaming pipeline, latency targets
 - **[Research](research.md)** — Tech decisions, competitive analysis, risk assessment
 

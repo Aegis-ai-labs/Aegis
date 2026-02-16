@@ -19,6 +19,8 @@ Both run on the Mac. They are **not** the same server.
 
 **Conclusion:** There is only **one** server that connects to the ESP32 for full voice: **bridge**. For hardware demos and real-time testing, always run **bridge**, not aegis.
 
+For a plain-language explanation of what bridge and aegis are and who does what (including tool calling and LLM order), see **`docs/BRIDGE_VS_AEGIS.md`**.
+
 ---
 
 ## 2. Which Files Auto-Connect the Hardware
