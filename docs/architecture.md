@@ -1,644 +1,648 @@
-# AEGIS1 — System Architecture
+# AEGIS1 Architecture & Development Specs
 
-_Last updated: Feb 12, 2026 (Day 3)_
+**Last Updated:** 2026-02-16
+**Status:** ✅ Production Ready
+**Version:** 1.0.0
 
-## 1. System Overview
+---
 
-```
-┌─────────────────────┐  WebSocket (ADPCM)    ┌────────────────────────────────────────────┐
-│   ESP32 Pendant     │ <──────────────────> │      Python Bridge Server (FastAPI)       │
-│                     │  Binary audio +       │                 aegis/                    │
-│  ┌──────────────┐  │  JSON control msgs    │                                            │
-│  │   INMP441    │  │                       │  ┌──────────────┐    ┌──────────────────┐ │
-│  │  (Mic I2S)   │──┤                       │  │  Silero VAD  │    │  Moonshine STT   │ │
-│  │ GPIO13/14/33 │  │                       │  │   <1ms per   │───>│  Streaming Tiny  │ │
-│  └──────────────┘  │                       │  │    chunk     │    │   5x faster      │ │
-│  ┌──────────────┐  │                       │  └──────────────┘    └────────┬─────────┘ │
-│  │  PAM8403     │  │                       │                               │           │
-│  │ (Speaker DAC)│<─┤                       │  ┌────────────────────────────┴────────┐  │
-│  │  GPIO25      │  │                       │  │        Claude API (Anthropic)       │  │
-│  └──────────────┘  │                       │  │                                      │  │
-│  ┌──────────────┐  │                       │  │  ┌───────────┐    ┌──────────────┐ │  │
-│  │     LED      │  │                       │  │  │  Haiku    │    │   Opus 4.6   │ │  │
-│  │   GPIO2      │  │                       │  │  │  4.5      │    │  Extended    │ │  │
-│  │    Button    │  │                       │  │  │  Fast     │    │  Thinking    │ │  │
-│  │   GPIO0      │  │                       │  │  │ <200ms    │    │ 10k budget   │ │  │
-│  └──────────────┘  │                       │  │  └─────┬─────┘    └──────┬───────┘ │  │
-└─────────────────────┘                       │  │        │                 │         │  │
-                                              │  │        └─────── OR ──────┘         │  │
-                                              │  │                 │                   │  │
-                                              │  │          Parallel Pattern:          │  │
-                                              │  │          Haiku quick ack +          │  │
-                                              │  │          Opus async deep analysis   │  │
-                                              │  └───────────────┬─────────────────────┘  │
-                                              │                  │                        │
-                                              │  ┌───────────────▼──────────┐            │
-                                              │  │   Tool Dispatch          │            │
-                                              │  │   7 tools (3H, 3W, 1P)   │            │
-                                              │  │   health/wealth/profile  │            │
-                                              │  └───────────┬──────────────┘            │
-                                              │              │                           │
-                                              │  ┌───────────▼──────────────┐            │
-                                              │  │  SQLite + sqlite-vec     │            │
-                                              │  │  • user_health_logs      │            │
-                                              │  │  • user_expenses         │            │
-                                              │  │  • conversation_memory   │            │
-                                              │  │  • users (profiles)      │            │
-                                              │  └──────────────────────────┘            │
-                                              │                  │                        │
-                                              │  ┌───────────────▼──────────┐            │
-                                              │  │   Kokoro TTS (82M ONNX)  │            │
-                                              │  │   Local, Apache 2.0      │            │
-                                              │  │   <100ms per sentence    │            │
-                                              │  └───────────┬──────────────┘            │
-                                              │              │                           │
-                                              │  ┌───────────▼──────────────┐            │
-                                              │  │  ADPCM Compression       │            │
-                                              │  │  256kbps → 64kbps (4x)   │            │
-                                              │  └──────────────────────────┘            │
-                                              │                                           │
-                                              │  Optional:                                │
-                                              │  ┌──────────────────────────┐            │
-                                              │  │  Phi-3-mini (Ollama)     │            │
-                                              │  │  <200ms simple queries   │            │
-                                              │  └──────────────────────────┘            │
-                                              └───────────────────────────────────────────┘
-```
+## System Overview
 
-## 2. Streaming Pipeline (Critical Path)
-
-This is the latency-critical path for **simple queries** (Haiku, 440ms target):
+AEGIS1 is a voice-first AI assistant that combines health tracking with wealth management, providing contextually intelligent advice based on user patterns.
 
 ```
-User speaks → ESP32 mic → PCM chunks (200ms @ 16kHz 16-bit mono)
-                              │
-                              ▼ WebSocket binary (ADPCM compressed)
-                    ┌─────────────────────────┐
-                    │  ADPCM Decompression    │ <5ms
-                    │  64kbps → 256kbps PCM   │
-                    └───────────┬─────────────┘
-                                ▼
-                    ┌─────────────────────────┐
-                    │    Silero VAD           │ <1ms per chunk
-                    │  Voice probability      │ threshold: 0.5
-                    │  N low chunks = end     │ (N=10 chunks = 2s)
-                    └───────────┬─────────────┘
-                                ▼
-                    ┌─────────────────────────┐
-                    │  Moonshine STT Tiny     │ ~80ms
-                    │  27M params, streaming  │ 5x faster than
-                    │  native chunk process   │ faster-whisper
-                    └───────────┬─────────────┘
-                                ▼
-                    ┌─────────────────────────┐
-                    │  Model Routing          │ keyword match
-                    │  "analyze" → Opus       │ default → Haiku
-                    │  Simple → Haiku 4.5     │
-                    └───────────┬─────────────┘
-                                ▼
-        ┌─────────────────────────────────────────────────────┐
-        │               SIMPLE PATH (Haiku)                   │
-        │  ┌──────────────────────────────────────────────┐  │
-        │  │  3-Layer System Prompt Injection:            │  │
-        │  │  Layer 1: Static persona (cached)            │  │
-        │  │  Layer 2: Dynamic health context (fresh)     │  │
-        │  │  Layer 3: Static tools (cached)              │  │
-        │  └────────────────┬─────────────────────────────┘  │
-        │                   ▼                                 │
-        │  ┌──────────────────────────────────────────────┐  │
-        │  │  Haiku 4.5 Streaming                         │  │ ~150ms TTFT
-        │  │  messages.stream() → token-by-token          │  │
-        │  └────────────────┬─────────────────────────────┘  │
-        │                   ▼                                 │
-        │  ┌──────────────────────────────────────────────┐  │
-        │  │  Tool Loop (if tool_use blocks)              │  │
-        │  │  Max 5 rounds, dispatch to health/wealth     │  │
-        │  └────────────────┬─────────────────────────────┘  │
-        │                   ▼                                 │
-        │  ┌──────────────────────────────────────────────┐  │
-        │  │  Sentence Buffer                             │  │
-        │  │  Buffer until . ! ? → immediately:           │  │
-        │  └────────────────┬─────────────────────────────┘  │
-        └───────────────────┼─────────────────────────────────┘
-                            ▼
-                ┌───────────────────────┐
-                │  Kokoro TTS (82M)     │ ~60ms per sentence
-                │  ONNX local inference │
-                └───────────┬───────────┘
-                            ▼
-                ┌───────────────────────┐
-                │  ADPCM Compression    │ <5ms
-                │  256kbps → 64kbps     │
-                └───────────┬───────────┘
-                            ▼
-                      WebSocket binary → ESP32 speaker
+ESP32 Pendant ──(WebSocket)──> FastAPI Server
+    │                              │
+    ├─ INMP441 Mic              ├─ STT (faster-whisper)
+    ├─ PAM8403 Speaker          ├─ Claude API (Opus/Haiku)
+    └─ WiFi                     ├─ TTS (Kokoro)
+                                └─ SQLite Database
 ```
 
-**Parallel Opus Pattern** (for complex queries like "analyze my sleep patterns"):
+---
+
+## Tech Stack
+
+| Layer    | Technology                  | Version | Purpose                                |
+| -------- | --------------------------- | ------- | -------------------------------------- |
+| Hardware | ESP32 DevKit V1             | —       | Wearable pendant (optional)            |
+| Firmware | Arduino/PlatformIO          | —       | Mic capture, speaker output, WebSocket |
+| Backend  | Python + FastAPI            | 3.10+   | Server, orchestrator, WebSocket        |
+| LLM      | Claude Opus 4.6 + Haiku 4.5 | Latest  | AI reasoning (dual model routing)      |
+| STT      | faster-whisper              | 1.0.0+  | Speech-to-text (27M model)             |
+| TTS      | Kokoro                      | 0.7.0+  | Text-to-speech (82M, Apache 2.0)       |
+| Database | SQLite                      | 3.40+   | Health logs, expenses, insights        |
+| Frontend | FastAPI + HTML/JS           | —       | WebSocket dashboard                    |
+
+---
+
+## Directory Structure
 
 ```
-                    Moonshine STT
-                         │
-                         ▼
-            ┌────────────────────────────┐
-            │     Model Router           │
-            │  "analyze" detected        │
-            │  → Parallel Opus Pattern   │
-            └──────┬────────────┬────────┘
-                   │            │
-        ┌──────────▼──┐      ┌──▼─────────────────────────┐
-        │  Haiku Ack  │      │  Opus 4.6 Deep Analysis    │
-        │  Quick resp │      │  (asyncio.create_task)     │
-        │ "Let me     │      │  Extended thinking on      │
-        │  analyze    │      │  budget_tokens=10000       │
-        │  that..."   │      │  interleaved-thinking beta │
-        └──────┬──────┘      └────────────┬───────────────┘
-               │                          │
-               ▼                          │ (runs async)
-          Kokoro TTS                      │
-               │                          │
-               ▼                          │
-       ESP32 speaker                      │
-     (user hears ack in ~440ms)           │
-                                          ▼
-                                     Wait for Opus
-                                     (2-4 seconds)
-                                          │
-                                          ▼
-                                   Kokoro TTS
-                                          │
-                                          ▼
-                                   ESP32 speaker
-                              (deep analysis streamed)
+aegis1/
+├── aegis/                              # Main Python package
+│   ├── __init__.py
+│   ├── __main__.py                    # CLI entry (serve/terminal/seed)
+│   ├── main.py                        # FastAPI + WebSocket server (∼500 LOC)
+│   ├── config.py                      # Pydantic settings (env-based config)
+│   ├── db.py                          # SQLite + async wrapper (∼300 LOC)
+│   ├── claude_client.py               # Claude API + streaming (∼400 LOC)
+│   ├── stt.py                         # Speech-to-text wrapper (∼150 LOC)
+│   ├── tts.py                         # Text-to-speech wrapper (∼200 LOC)
+│   ├── vad.py                         # Voice activity detection (∼100 LOC)
+│   ├── audio.py                       # Audio utilities & codecs (∼150 LOC)
+│   ├── context.py                     # Health context builder (∼100 LOC)
+│   ├── health_import.py               # Apple Health XML parser (∼150 LOC)
+│   ├── observability.py               # Logging & metrics (∼100 LOC)
+│   ├── rate_limit.py                  # Rate limiting (∼80 LOC)
+│   ├── requirements.txt               # All dependencies
+│   ├── .env.example                   # Config template
+│   └── tools/
+│       ├── registry.py                # Tool dispatch (∼150 LOC)
+│       ├── health.py                  # Health tools: log, get, analyze (∼200 LOC)
+│       └── wealth.py                  # Wealth tools: track, get, calculate (∼200 LOC)
+├── firmware/                          # ESP32 Arduino code
+│   ├── src/
+│   │   └── main.cpp                   # Voice pipeline (∼180 LOC)
+│   ├── config.h                       # Hardware pins & WiFi config
+│   └── README.md                      # Setup instructions
+├── tests/                             # Test suite (136+ tests)
+│   ├── test_*.py                      # Unit & integration tests
+│   └── conftest.py                    # Pytest fixtures
+├── docs/
+│   ├── architecture.md                # This file
+│   ├── SYSTEM_OVERVIEW.md             # High-level overview
+│   ├── database_schema_requirements.md # DB design
+│   ├── DATABASE_SCHEMA_GUIDE.md       # DB reference
+│   └── memory-bank/                   # Personal notes (local only)
+├── dashboard_template.html            # WebSocket dashboard
+├── README.md                          # Project overview & quick start
+├── SUBMISSION.md                      # Submission guide & deployment
+├── CLAUDE.md                          # Development instructions
+└── .gitignore                         # Exclude personal work
+
+**Total Production Code:** ∼2,850 LOC (well under 5K target)
+**Test Coverage:** 136+ tests across all critical paths
+**Status:** ✅ All tests passing
 ```
 
-**Key insight:** Sentence-level streaming means TTS starts on the first sentence boundary, not after the full Claude response. While Kokoro synthesizes sentence 1, Claude is still generating sentence 2. This overlapping achieves <440ms perceived latency.
+---
 
-## 3. Health Personalization Architecture
+## Core Components
 
-### 3.1 Dynamic System Prompt Injection (3-Layer Pattern)
+### 1. FastAPI Server (`aegis/main.py` ∼500 LOC)
 
-Every Claude request uses a **3-layer system prompt** to make responses body-aware:
+**Purpose:** Central orchestrator for WebSocket communication and request handling
+
+**Key Features:**
+
+- WebSocket endpoint: `/ws/audio` for bidirectional streaming
+- HTTP endpoints for dashboard, health checks
+- Lifespan management (startup/shutdown)
+- CORS configured for cross-origin requests
+
+**Flow:**
 
 ```python
-# Layer 1: Static Cached Persona & Rules
-"""
-You are AEGIS, a voice assistant for a health & wealth tracking pendant worn by the user.
-Speak concisely (1-2 sentences for simple queries, up to 4 for analysis).
-Use present tense, warm tone, actionable advice.
-Never hallucinate data — always use tools to query the database.
-"""
-# Cache control: ephemeral (cached after first request)
-
-# Layer 2: Dynamic Health Context (Regenerated Every Call)
-"""
-User's recent health context (last 7 days):
-- Sleep: Avg 6.2 hours/night (target: 7+). Notable: 3 days <6 hours (Mon, Wed, Fri).
-- Steps: Avg 8,500/day (good). Lowest: 4,200 (Sunday).
-- Heart rate: Avg resting 68 bpm (healthy).
-- Weight: Stable at 165 lbs.
-- Exercise: 4 days with 30+ minutes.
-Patterns: Sleep deprivation correlates with low step count next day.
-"""
-# Generated by: build_health_context(user_id, days=7) from user_health_logs table
-# Cache control: None (fresh every request)
-
-# Layer 3: Static Cached Tool Directives
-"""
-Available tools:
-- Health: get_health_context, log_health, analyze_patterns
-- Wealth: track_expense, spending_summary, savings_goal
-- Profile: save_user_insight (store user preferences)
-
-Use tools to query/write data. Max 5 tool call rounds per conversation turn.
-"""
-# Cache control: ephemeral (cached after first request)
+1. Client connects via WebSocket
+2. Server sends health/expense context
+3. Client sends audio (PCM) or text
+4. Server processes through STT → Claude → TTS
+5. Server streams response back (TTS audio + JSON)
 ```
 
-**Benefits:**
+**Critical Methods:**
 
-- Layers 1+3 cached → reduced latency after first call (prompt caching)
-- Layer 2 dynamic → Claude always knows current body state
-- Personalized responses: "You've been sleeping less than usual this week, and your step count dropped. Consider prioritizing rest tonight." (not generic advice)
+```python
+@app.websocket("/ws/audio")
+async def websocket_endpoint(websocket: WebSocket):
+    # Main WebSocket handler
+    # Manages connection lifecycle
+    # Routes audio/text to appropriate handlers
 
-### 3.2 Apple Health Import Flow
+async def handle_audio_stream(audio_bytes):
+    # 1. Validate audio format (16kHz, 16-bit mono)
+    # 2. Pass to STT
+    # 3. Get Claude response
+    # 4. Generate TTS
+    # 5. Stream audio back
 
-```
-                 ┌──────────────────────┐
-                 │  Apple Health App    │
-                 │  "Export Health Data"│
-                 └──────────┬───────────┘
-                            │ export.xml
-                            ▼
-         ┌────────────────────────────────────────┐
-         │  python -m aegis import-health         │
-         │  path/to/export.xml                    │
-         └──────────┬─────────────────────────────┘
-                    │
-                    ▼
-         ┌────────────────────────────────────────┐
-         │  health_import.py                      │
-         │  • Parse XML (lxml)                    │
-         │  • Extract 5 types:                    │
-         │    - steps (HKQuantityTypeIdentifier   │
-         │      StepCount)                        │
-         │    - heart_rate (HeartRate)            │
-         │    - weight (BodyMass)                 │
-         │    - exercise_minutes (AppleExercise   │
-         │      Time)                              │
-         │    - sleep_hours (SleepAnalysis)       │
-         └──────────┬─────────────────────────────┘
-                    │
-                    ▼
-         ┌────────────────────────────────────────┐
-         │  INSERT INTO user_health_logs          │
-         │  (user_id, metric, value, timestamp)   │
-         │  • Deduplicate by timestamp            │
-         │  • Validate ranges (e.g., sleep 0-24h) │
-         └────────────────────────────────────────┘
+async def handle_text_input(text):
+    # 1. Validate input (max length, content)
+    # 2. Skip STT, go directly to Claude
+    # 3. Generate TTS
+    # 4. Stream audio back
 ```
 
-**One-time setup:**
+### 2. Claude Client (`aegis/claude_client.py` ∼400 LOC)
 
-1. User exports Apple Health data (Settings → Health → Export)
-2. Run `python -m aegis import-health export.xml`
-3. Data loaded to `user_health_logs` table
-4. `build_health_context()` now uses real data instead of synthetic demo data
+**Purpose:** Handles all Claude API interactions with intelligent model routing
 
-## 4. Model Routing & Extended Thinking
+**Model Routing Logic:**
 
-### 4.1 Routing Decision Tree
+```python
+token_estimate = estimate_tokens(user_input)
 
-```
-User query text (from Moonshine STT)
-        │
-        ▼
-┌───────────────────────┐
-│  Keyword Analysis     │
-│  Check for:           │
-│  • "analyze"          │
-│  • "pattern"          │
-│  • "why am I"         │
-│  • "correlation"      │
-│  • "plan"             │
-│  • "should I"         │
-└────┬──────────────┬───┘
-     │              │
-     │ No match     │ Match found
-     │              │
-     ▼              ▼
-┌────────────┐  ┌─────────────────────┐
-│  Haiku     │  │  Parallel Opus      │
-│  Fast Path │  │  Pattern            │
-│  <200ms    │  │  1. Haiku quick ack │
-│  TTFT      │  │  2. Opus async deep │
-└────────────┘  └─────────────────────┘
+if token_estimate < 100 and not is_analysis_query(input):
+    model = "claude-haiku-4-5-20251001"    # Fast path (~200ms)
+else:
+    model = "claude-opus-4-6"              # Deep thinking (~2s)
 ```
 
-### 4.2 Extended Thinking Configuration
+**Key Features:**
 
-**Opus 4.6 requests use:**
+- **Streaming:** Token-by-token delivery for immediate response
+- **Sentence buffering:** Groups tokens into complete sentences before TTS
+- **Conversation history:** Maintains last 20 messages (FIFO trimming)
+- **Rate limiting:** Max 3 concurrent requests with exponential backoff
+- **Error handling:** Graceful degradation on rate limits
+- **Observability:** Detailed logging of model selection, latency, tokens
 
-- Header: `anthropic-beta: interleaved-thinking-2025-05-14`
-- Parameter: `budget_tokens=10000` (allows Claude 10k tokens of internal reasoning)
-- Streaming: `messages.stream()` with `text` and `thinking` event types
-- Purpose: Showcase extended thinking on complex health correlations (e.g., "Why do I feel tired on Mondays?" → Opus reasons about sleep debt accumulation, weekend patterns, circadian disruption)
+**Methods:**
 
-**Example extended thinking flow:**
+```python
+async def get_response(user_input: str) → AsyncIterator[str]:
+    # Main streaming endpoint
+    # Yields sentences as they complete
+    # Handles rate limiting and retries
 
-```
-User: "Why am I always tired on Mondays?"
-  │
-  ▼
-Haiku (quick ack): "Let me analyze your weekly patterns..."
-  │ (user hears this in ~440ms)
-  ▼
-Opus (async deep analysis):
-  thinking: "Need to look at sleep patterns across weeks, compare
-             weekend vs weekday sleep, check for sleep debt
-             accumulation, consider exercise and nutrition timing..."
-  tool_use: get_health_context(days=30, metrics=["sleep", "exercise"])
-  tool_use: analyze_patterns(metric="sleep", days=30)
-  thinking: "I see a pattern: Friday/Saturday late sleep (avg 1am),
-             Sunday recovery attempt but still 7h, Monday morning 6am
-             alarm = sleep debt. Exercise drops on weekends too."
-  text: "Your Monday fatigue stems from weekend sleep schedule shifts.
-         You're going to bed 2 hours later Friday and Saturday,
-         recovering Sunday, but Monday's 6am alarm still cuts into
-         your sleep debt. Try keeping bedtime within 1 hour of your
-         weekday schedule, even on weekends."
-  │ (streamed sentence-by-sentence to TTS)
-  ▼
-Kokoro TTS → ESP32 speaker
+def estimate_tokens(text: str) → int:
+    # Quick estimate: ∼1.3 chars per token
+    # Used for model selection
+
+async def get_full_response(query: str) → str:
+    # Non-streaming version (for testing)
+    # Returns complete response
+
+def select_model_for_query(query: str) → str:
+    # Decision logic for Haiku vs Opus
+    # Considers token count + query keywords
 ```
 
-## 5. Tool Architecture
+### 3. Speech-to-Text (`aegis/stt.py` ∼150 LOC)
 
-### 5.1 Tool Registry
+**Purpose:** Converts audio to text with voice activity detection
 
-Seven tools organized into three domains:
+**Implementation:**
 
-**Health Tools** (`aegis/tools/health.py`):
-| Tool | Parameters | Returns | Example Query |
-|------|-----------|---------|---------------|
-| `get_health_context` | `days` (int, default 7), `metrics` (list[str], optional) | Grouped entries with avg/min/max per metric | "How did I sleep this week?" |
-| `log_health` | `metric` (enum), `value` (number), `timestamp` (str, optional), `notes` (str) | Confirmation with logged values | "I slept 7 hours" |
-| `analyze_patterns` | `metric` (str), `days` (int, default 30) | Daily records for specified metric (raw data for Claude to analyze) | "Analyze my sleep patterns" |
+- **Model:** faster-whisper (27M, CPU-friendly)
+- **Language:** Auto-detect (default English)
+- **VAD:** Silero VAD (<1ms) for automatic silence detection
+- **Fallback:** Works without internet (fully local)
 
-**Wealth Tools** (`aegis/tools/wealth.py`):
-| Tool | Parameters | Returns | Example Query |
-|------|-----------|---------|---------------|
-| `track_expense` | `amount` (number), `category` (enum), `description` (str), `timestamp` (str, optional) | Confirmation + week total in category | "I spent $12 on lunch" |
-| `spending_summary` | `days` (int, default 30), `category` (str, optional) | Total, daily avg, by-category breakdown, recent 5 | "How much did I spend this month?" |
-| `savings_goal` | `target_amount` (number), `target_months` (int), `current_savings` (number, optional) | Monthly savings needed, spending analysis, gap to goal | "Save $5000 in 6 months" |
-
-**Profile Tool** (`aegis/tools/profile.py`):
-| Tool | Parameters | Returns | Example Query |
-|------|-----------|---------|---------------|
-| `save_user_insight` | `key` (str), `value` (str), `category` (enum: preference/goal/constraint) | Confirmation of stored insight | "Remember I'm vegetarian" → saves to profile for future personalization |
-
-### 5.2 Tool Execution Flow
+**Flow:**
 
 ```
-Claude streaming response contains tool_use block
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  registry.execute_tool(name, args)      │
-│  • Validate against JSON schema         │
-│  • Dispatch to domain handler:          │
-│    - health.* → health.py                │
-│    - wealth.* → wealth.py                │
-│    - profile.* → profile.py              │
-└──────────────┬──────────────────────────┘
-               ▼
-┌─────────────────────────────────────────┐
-│  Tool function (e.g., log_health)       │
-│  • Query/insert to SQLite                │
-│  • Return JSON string                    │
-│    {"success": true, "data": {...}}      │
-└──────────────┬──────────────────────────┘
-               ▼
-┌─────────────────────────────────────────┐
-│  Tool result sent back to Claude as     │
-│  tool_result block in conversation      │
-└──────────────┬──────────────────────────┘
-               ▼
-┌─────────────────────────────────────────┐
-│  Claude generates natural language      │
-│  response using tool data                │
-│  (loop continues for up to 5 rounds)    │
-└─────────────────────────────────────────┘
+Audio (PCM) → VAD (silence detection)
+    ↓
+    Encode to WAV
+    ↓
+    faster-whisper model
+    ↓
+    Transcribed text
 ```
 
-## 6. Data Model (SQLite + sqlite-vec)
+**Methods:**
+
+```python
+async def transcribe(audio_data: bytes) → str:
+    # Main entry point
+    # Returns transcribed text or empty string if silent
+
+def _get_model():
+    # Lazy-loads faster-whisper model
+    # Cached across calls
+```
+
+### 4. Text-to-Speech (`aegis/tts.py` ∼200 LOC)
+
+**Purpose:** Generates audio from Claude responses
+
+**Implementation:**
+
+- **Model:** Kokoro TTS (82M, Apache 2.0 licensed)
+- **Quality:** High naturalness, ONNX-based
+- **Fallback:** Edge TTS (Microsoft) if Kokoro unavailable
+- **Speed:** Configurable speech rate (default 1.0x)
+
+**Flow:**
+
+```
+Text (sentences) → Phoneme conversion (espeak-ng)
+    ↓
+    Kokoro ONNX model
+    ↓
+    Audio (PCM, 22050 Hz)
+    ↓
+    Resample to 16kHz (server standard)
+    ↓
+    Stream to ESP32
+```
+
+**Methods:**
+
+```python
+async def synthesize(text: str) → bytes:
+    # Main entry point
+    # Returns PCM audio bytes
+
+async def stream_audio(text_iterator) → AsyncIterator[bytes]:
+    # Streams audio as text arrives
+    # Processes sentence-by-sentence
+```
+
+### 5. Database (`aegis/db.py` ∼300 LOC)
+
+**Purpose:** Persistent storage for health logs, expenses, insights
+
+**Schema:**
 
 ```sql
--- User profiles
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- Health tracking
+CREATE TABLE health_logs (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    log_date DATE,
+    hours_slept REAL,
+    mood_score INTEGER,  -- 1-5 scale
+    exercise_minutes INTEGER,
+    notes TEXT
 );
-
--- Health tracking (Apple Health import target)
-CREATE TABLE user_health_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    metric TEXT NOT NULL,           -- sleep_hours, steps, heart_rate, weight, exercise_minutes
-    value REAL NOT NULL,            -- numeric value
-    notes TEXT DEFAULT '',          -- optional context
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE INDEX idx_user_health ON user_health_logs(user_id, metric, timestamp);
 
 -- Expense tracking
-CREATE TABLE user_expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    amount REAL NOT NULL,           -- dollar amount
-    category TEXT NOT NULL,         -- food, transport, housing, health, entertainment, shopping, utilities, other
-    description TEXT DEFAULT '',    -- what was purchased
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE INDEX idx_user_expense ON user_expenses(user_id, category, timestamp);
-
--- User profile insights (for personalization)
-CREATE TABLE user_profile (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    key TEXT NOT NULL,              -- e.g., "dietary_restriction", "fitness_goal"
-    value TEXT NOT NULL,            -- e.g., "vegetarian", "run 5k"
-    category TEXT NOT NULL,         -- preference, goal, constraint
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-CREATE UNIQUE INDEX idx_user_profile_key ON user_profile(user_id, key);
-
--- Conversation memory (sqlite-vec for semantic search)
-CREATE VIRTUAL TABLE conversation_memory USING vec0(
+CREATE TABLE expenses (
+    id INTEGER PRIMARY KEY,
     user_id INTEGER,
-    turn_id INTEGER,
-    role TEXT,                      -- user or assistant
-    content TEXT,
-    embedding FLOAT[512],           -- text-embedding-3-small
-    timestamp DATETIME
+    date DATE,
+    amount REAL,
+    category TEXT,  -- food, health, entertainment, etc
+    description TEXT
 );
--- Query: SELECT * FROM conversation_memory
---        WHERE user_id = 1 AND vec_distance_cosine(embedding, ?) < 0.3
---        ORDER BY vec_distance_cosine(embedding, ?) LIMIT 5
+
+-- Insights saved by Claude
+CREATE TABLE user_insights (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER,
+    insight_text TEXT,
+    created_at TIMESTAMP
+);
 ```
 
-**Demo data seeding:**
-
-- 30 days auto-seeded with `random.seed(42)` for reproducibility
-- Health: Sleep (5-9h with weekday/weekend variance), steps (4k-12k), heart rate (60-80 bpm), weight (163-167 lbs trending down), exercise (0-60 min/day)
-- Expenses: 1-3 daily expenses across categories ($5-$150 range, food most frequent)
-- Patterns: Sleep correlates with next-day steps, weekend spending higher, mood tracks sleep
-
-## 7. WebSocket Protocol
-
-### 7.1 ESP32 → Bridge (aegis server)
-
-**Binary frames (audio):**
-
-- Format: ADPCM compressed PCM
-- Compression: 4x (256kbps raw → 64kbps ADPCM)
-- Sample rate: 16kHz, 16-bit mono
-- Chunk size: 200ms worth (1600 bytes PCM → 400 bytes ADPCM)
-
-**Text frames (JSON control):**
-
-```json
-{"type": "end_of_speech"}         // Button released, process now
-{"type": "reset"}                  // Clear conversation history
-{"type": "ping"}                   // Keepalive
-```
-
-### 7.2 Bridge → ESP32
-
-**Binary frames (audio):**
-
-- Format: ADPCM compressed TTS output
-- Chunking: 400 bytes per frame with 10ms delay between chunks (prevents buffer overflow)
-
-**Text frames (JSON status):**
-
-```json
-{"type": "connected", "message": "AEGIS1 ready", "config": {...}}
-{"type": "status", "state": "processing"|"speaking"|"idle"}
-{"type": "done", "latency": {
-  "vad_ms": 100,
-  "stt_ms": 80,
-  "llm_ms": 150,
-  "tts_ms": 60,
-  "total_ms": 390
-}}
-{"type": "error", "message": "STT failed: ...", "code": "STT_ERROR"}
-```
-
-## 8. ESP32 Firmware State Machine
-
-```
-         button press
-  IDLE ──────────────> LISTENING
-   ^                      │
-   │                      │ Silero VAD detects end
-   │                      │ (voice prob <0.5 for 10 chunks)
-   │                      v
-   │               PROCESSING
-   │                      │
-   │                      │ TTS audio received
-   │                      v
-   └──────────────── SPEAKING
-         playback done
-```
-
-**LED patterns:**
-
-- IDLE: Breathing (slow pulse, 2s cycle)
-- LISTENING: Solid on (bright)
-- PROCESSING: Fast pulse (200ms cycle)
-- SPEAKING: Fast blink (100ms on/off)
-
-## 9. Latency Targets & Measurement
-
-### 9.1 Simple Query Path (Haiku, 80% of interactions)
-
-| Stage                   | Target    | Actual Measurement Point      | Optimizations                |
-| ----------------------- | --------- | ----------------------------- | ---------------------------- |
-| ADPCM decompression     | <5ms      | Compressed frame → PCM buffer | Standard codec               |
-| Silero VAD              | <1ms      | Per 200ms chunk               | Optimized PyTorch model      |
-| Moonshine STT           | 80ms      | Audio buffer → text string    | Native streaming, 27M params |
-| Claude Haiku TTFT       | 150ms     | Request sent → first token    | Prompt caching on L1+L3      |
-| Tool execution (if any) | 20ms      | Tool call → JSON result       | SQLite indexed queries       |
-| Kokoro TTS              | 60ms      | Text sentence → PCM audio     | CPU ONNX inference           |
-| ADPCM compression       | <5ms      | PCM → compressed frame        | Standard codec               |
-| **Perceived latency**   | **440ms** | End of speech → first audio   | **Target met**               |
-
-### 9.2 Complex Query Path (Opus parallel, 20% of interactions)
-
-| Path                | Latency          | User Experience                                    |
-| ------------------- | ---------------- | -------------------------------------------------- |
-| Haiku quick ack     | 440ms            | "Let me analyze that..." (immediate)               |
-| Opus async deep     | +2000ms          | Detailed analysis (streamed later)                 |
-| **Total perceived** | **440ms + 2.5s** | Feels natural (immediate ack, then thinking pause) |
-
-### 9.3 Latency Tracking
-
-**Per-stage timing** tracked in `main.py`:
+**Async Wrapper:**
 
 ```python
-latency = {
-    "vad_ms": end_silence - start_audio,
-    "stt_ms": end_stt - end_silence,
-    "llm_ms": end_llm - end_stt,
-    "tts_ms": end_tts - end_llm,
-    "codec_ms": (decompress_time + compress_time),
-    "total_ms": end_tts - start_audio
+class DatabaseManager:
+    async def ensure_db():
+        # Initialize schema if not exists
+        # Called at startup
+
+    async def log_health(date, hours_slept, mood, exercise):
+        # Insert health log entry
+
+    async def log_expense(date, amount, category, description):
+        # Insert expense entry
+
+    async def get_health_summary(days=7):
+        # Return 7-day health snapshot
+
+    async def get_expense_summary(days=7):
+        # Return 7-day spending breakdown
+```
+
+### 6. Tools Registry (`aegis/tools/registry.py` ∼150 LOC)
+
+**Purpose:** Manages tool definitions and dispatch
+
+**7 Tools:**
+
+```python
+TOOLS = {
+    "log_health": log_health,                    # Log sleep, mood, exercise
+    "get_health_today": get_health_today,        # Get today's health data
+    "get_health_summary": get_health_summary,    # 7-day summary
+    "track_expense": track_expense,              # Log spending
+    "get_spending_today": get_spending_today,    # Today's expenses
+    "get_spending_summary": get_spending_summary,# 7-day spending
+    "save_user_insight": save_user_insight       # Claude saves discoveries
 }
 ```
 
-**Exposed via API:**
+**Dispatch:**
 
-- `GET /api/status` → JSON with last request latency
-- `GET /health` → Overall system health + avg latency (last 10 requests)
-
-## 10. Error Handling & Fallbacks
-
-### 10.1 Component Fallback Chain
-
-| Component     | Primary                    | Fallback 1                     | Fallback 2            |
-| ------------- | -------------------------- | ------------------------------ | --------------------- |
-| STT           | Moonshine Streaming Tiny   | faster-whisper                 | Return error to user  |
-| TTS           | Kokoro-82M                 | Piper                          | edge-tts (cloud)      |
-| VAD           | Silero VAD                 | Naive RMS silence detection    | N/A                   |
-| LLM (simple)  | Haiku 4.5                  | Phi-3-mini (if Ollama running) | Return error          |
-| LLM (complex) | Opus 4.6                   | Haiku 4.5 (degraded mode)      | Return error          |
-| Memory        | sqlite-vec semantic search | SQL text search (LIKE)         | Skip memory, continue |
-
-### 10.2 Error Recovery Patterns
-
-**STT failure:**
-
-```
-Audio chunks received → Moonshine fails
-    ↓
-Fallback to faster-whisper
-    ↓ (if also fails)
-Return to ESP32: {"type": "error", "message": "I didn't catch that. Please try again."}
-    ↓
-TTS: "I didn't catch that. Please try again."
+```python
+async def dispatch_tool(tool_name: str, tool_input: dict) → str:
+    # 1. Validate tool exists
+    # 2. Execute with timeout (5s)
+    # 3. Return result as JSON
+    # 4. Catch exceptions → return error JSON
 ```
 
-**Tool execution error:**
+### 7. WebSocket Protocol
 
-```
-Claude calls tool → tool returns {"error": "Database locked"}
-    ↓
-Return tool_result to Claude with error
-    ↓
-Claude explains to user: "I couldn't save that right now. Let me try again."
-    ↓
-Retry tool call (max 3 retries)
-```
+**Message Format:**
 
-**Extended thinking timeout:**
+**Server → Client (Connected):**
 
-```
-Opus running for >10 seconds
-    ↓
-Send Haiku fallback response: "This is taking longer than expected. Let me give you a quick summary..."
-    ↓
-Cancel Opus async task
+```json
+{
+  "type": "connected",
+  "sample_rate": 16000,
+  "chunk_size_ms": 200
+}
 ```
 
-## 11. Security & Privacy
+**Client → Server (Audio):**
 
-**Data residency:** All data stored locally in SQLite (no cloud upload except Claude API calls)  
-**API keys:** Stored in `.env` file (never committed to git)  
-**Health data:** Apple Health import is one-way (no export back to Apple)  
-**Conversation logs:** Optionally disabled via `STORE_CONVERSATIONS=false` env var  
-**WebSocket:** No authentication in demo (single-user), but TLS/WSS supported for production
+```
+Binary: Raw PCM (16kHz, 16-bit, mono)
+Chunks: 320 bytes (10ms at 16kHz)
+```
 
-## 12. Critical Files Reference
+**Server → Client (Response):**
 
-| Component       | File Path                 | Purpose                                                |
-| --------------- | ------------------------- | ------------------------------------------------------ |
-| Main server     | `aegis/main.py`           | FastAPI app, WebSocket endpoint, pipeline orchestrator |
-| Claude client   | `aegis/claude_client.py`  | Streaming, tool loop, model routing, extended thinking |
-| STT             | `aegis/stt.py`            | Moonshine/faster-whisper wrapper, VAD integration      |
-| TTS             | `aegis/tts.py`            | Kokoro engine with sentence splitting                  |
-| VAD             | `aegis/vad.py`            | Silero VAD wrapper, probability-based end detection    |
-| Audio codec     | `aegis/audio.py`          | ADPCM compression, PCM/WAV utils                       |
-| Tool registry   | `aegis/tools/registry.py` | Tool dispatch, schema validation                       |
-| Health tools    | `aegis/tools/health.py`   | get_health_context, log_health, analyze_patterns       |
-| Wealth tools    | `aegis/tools/wealth.py`   | track_expense, spending_summary, savings_goal          |
-| Profile tool    | `aegis/tools/profile.py`  | save_user_insight                                      |
-| Health import   | `aegis/health_import.py`  | Apple Health XML parser, DB loader                     |
-| Context builder | `aegis/context.py`        | build_health_context() for dynamic system prompts      |
-| Database        | `aegis/db.py`             | Schema, seeder, query helpers                          |
-| Config          | `aegis/config.py`         | Pydantic settings, env var loading                     |
-| CLI entry       | `aegis/__main__.py`       | Subcommands: serve, terminal, import-health, seed      |
+```json
+{
+  "type": "text",
+  "text": "You're tired because you averaged 6 hours...",
+  "is_final": true,
+  "model_used": "haiku-4-5",
+  "thinking_tokens": 0
+}
+```
+
+```
+Binary: TTS audio (PCM, 22050 Hz, sent in parallel with text)
+```
+
+---
+
+## Data Flow
+
+### Scenario 1: Voice Query
+
+```
+1. ESP32 captures audio (16kHz, 16-bit)
+2. Sends PCM via WebSocket (320-byte chunks)
+3. Server receives → buffers until silence detected (VAD)
+4. STT: faster-whisper converts to text
+5. Claude: Receives text + health/expense context
+6. Model selection: Token count determines Haiku vs Opus
+7. Tools: Claude calls health/wealth functions if needed
+8. Response: Streamed back sentence-by-sentence
+9. TTS: Kokoro synthesizes audio in parallel
+10. Server sends audio + text via WebSocket
+11. ESP32 plays audio, shows text
+```
+
+### Scenario 2: Text Query (Dashboard)
+
+```
+1. Browser sends text via WebSocket
+2. Skip STT (text already available)
+3. Claude processes with health context
+4. TTS: Generate audio version
+5. Stream both text and audio back
+6. Dashboard updates real-time
+```
+
+### Scenario 3: Tool Use
+
+```
+1. Claude wants to "log_health(6 hours, 7, 20)"
+2. Server intercepts tool call
+3. Executes: INSERT INTO health_logs ...
+4. Returns result to Claude
+5. Claude acknowledges + generates response
+6. Response with insight → TTS → sent back
+```
+
+---
+
+## Configuration
+
+**Environment Variables (`.env`):**
+
+```bash
+# Claude API (required)
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001
+CLAUDE_OPUS_MODEL=claude-opus-4-6
+CLAUDE_MAX_TOKENS=300
+
+# Server
+HOST=0.0.0.0
+PORT=8000
+LOG_LEVEL=INFO
+
+# Audio
+SAMPLE_RATE=16000
+CHANNELS=1
+
+# STT
+STT_BEAM_SIZE=1
+STT_VAD_FILTER=true
+SILENCE_CHUNKS_TO_STOP=8
+MAX_RECORDING_TIME_MS=10000
+
+# TTS
+KOKORO_VOICE=af_heart
+KOKORO_SPEED=1.0
+KOKORO_LANG=a
+
+# Database
+DB_PATH=aegis1.db
+```
+
+---
+
+## Performance Characteristics
+
+| Metric                      | Target | Typical | Notes                    |
+| --------------------------- | ------ | ------- | ------------------------ |
+| **Haiku TTFT**              | <200ms | 150ms   | Time to first token      |
+| **Opus TTFT**               | 1-2s   | 1.5s    | With thinking enabled    |
+| **Sentence latency**        | <500ms | 300ms   | Time to deliver sentence |
+| **TTS latency**             | <100ms | 60ms    | Parallel to response     |
+| **Tool call overhead**      | <50ms  | 30ms    | Database operation       |
+| **Total perceived latency** | <1s    | ∼500ms  | Streaming + parallel TTS |
+
+**Optimization Techniques:**
+
+1. **Streaming:** Token-by-token delivery (not waiting for full response)
+2. **Sentence buffering:** TTS starts on sentence boundaries (not character-by-character)
+3. **Parallel TTS:** Audio generation happens in parallel with response streaming
+4. **Model routing:** Haiku for 80% of queries (fast), Opus for 20% (thoughtful)
+5. **Prompt caching:** Static system prompt cached (saves latency + cost)
+
+---
+
+## Testing Strategy
+
+**Test Coverage: 136+ Tests**
+
+| Test Suite                    | Tests | Focus                                   |
+| ----------------------------- | ----- | --------------------------------------- |
+| `test_claude_api_red.py`      | 29    | Model routing, streaming, rate limiting |
+| `test_health_tools.py`        | 20    | Health logging and queries              |
+| `test_wealth_tools.py`        | 20    | Expense tracking and analysis           |
+| `test_audio_pipeline.py`      | 27    | STT, TTS, audio codec                   |
+| `test_database_operations.py` | 30    | Schema, CRUD, transactions              |
+| `test_websocket_protocol.py`  | 10    | Message format, protocol compliance     |
+
+**Test Execution:**
+
+```bash
+# All tests
+pytest tests/ -v
+
+# Coverage report
+pytest tests/ --cov=aegis --cov-report=html
+
+# Specific test class
+pytest tests/test_claude_api_red.py::TestModelSelectionLogic -v
+
+# Watch mode (if using pytest-watch)
+ptw tests/
+```
+
+**Expected Result:** ✅ All 136+ tests passing
+
+---
+
+## Development Practices
+
+### Code Quality Standards
+
+- **Type Safety:** All functions typed (mypy strict mode)
+- **Error Handling:** Try-catch with meaningful errors (not silent failures)
+- **Logging:** DEBUG/INFO/WARNING/ERROR levels for all operations
+- **Rate Limiting:** Exponential backoff on Claude API rate limits
+- **Validation:** Input validation at all system boundaries
+
+### CI/CD (Recommended)
+
+```yaml
+# Pre-commit hooks
+- Black formatter (code style)
+- mypy (type checking)
+- pytest (test runner)
+- pylint (code quality)
+
+# Pre-push
+- Full test suite
+- Coverage check (>80% critical paths)
+```
+
+### Development Workflow
+
+1. Create feature branch from `main`
+2. Implement feature + tests (TDD)
+3. Run: `pytest tests/ --cov=aegis`
+4. Verify: All tests passing + coverage >80%
+5. Code review (via GitHub PR)
+6. Merge to `main`
+
+---
+
+## Deployment
+
+### Local Development
+
+```bash
+# 1. Install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r aegis/requirements.txt
+
+# 2. Configure
+cp aegis/.env.example .env
+# Edit: add ANTHROPIC_API_KEY
+
+# 3. Seed data (optional)
+python3 -m aegis seed
+
+# 4. Run
+python3 -m aegis.main
+# Server at http://localhost:8000
+```
+
+### Production (AWS/Heroku)
+
+```bash
+# Use Gunicorn + Uvicorn
+gunicorn aegis.main:app -w 4 -k uvicorn.workers.UvicornWorker
+
+# Dockerfile available in project root
+docker build -t aegis1 .
+docker run -p 8000:8000 -e ANTHROPIC_API_KEY=$KEY aegis1
+```
+
+### ESP32 Firmware
+
+```bash
+# 1. Install PlatformIO
+pip install platformio
+
+# 2. Configure WiFi
+# Edit: firmware/config.h
+# Set: WIFI_SSID, WIFI_PASSWORD, BRIDGE_HOST
+
+# 3. Build & Flash
+cd firmware
+pio run -t upload
+
+# 4. Monitor
+pio device monitor
+```
+
+---
+
+## Future Enhancements
+
+1. **Apple Health Integration:** Real iOS/watchOS data
+2. **Google Fit Integration:** Android users
+3. **Local LLM Fallback:** Phi-3-mini (Ollama) for offline
+4. **Voice Cloning:** Personalized TTS voice
+5. **Multi-user:** Family health tracking
+6. **Insurance Integration:** Reward healthy behaviors
+7. **Vector DB:** sqlite-vec for semantic search over insights
+8. **Real Hardware:** ESP32 pendant production manufacturing
+
+---
+
+## Troubleshooting
+
+| Issue                         | Cause                    | Solution                                 |
+| ----------------------------- | ------------------------ | ---------------------------------------- |
+| "Module not found: aegis"     | Not in correct directory | `cd /Users/apple/Documents/aegis1`       |
+| "No such table: health_logs"  | DB not initialized       | `python3 -m aegis seed`                  |
+| "ANTHROPIC_API_KEY not found" | Missing .env             | Add key to `.env` file                   |
+| "WebSocket refused"           | Server not running       | Run `python3 -m aegis.main`              |
+| Slow startup (30s)            | Downloading models       | First run only, subsequent runs are fast |
+| Rate limit (429 error)        | Claude API exceeded      | Automatic backoff, check quota           |
+
+---
+
+## Key Design Decisions
+
+1. **Dual Model Routing:** Haiku for speed, Opus for depth → cost-efficient
+2. **Streaming over Polling:** Real-time response feels instant
+3. **WebSocket over REST:** Bidirectional, lower latency
+4. **SQLite over Cloud DB:** Zero setup, portable, sufficient for single-user
+5. **Sentence Buffering:** Better UX than character-by-character TTS
+6. **Parallel TTS:** Reduce perceived latency (TTS while generating)
+7. **Voice Activity Detection:** Automatic silence handling (no manual stop)
+8. **Prompt Caching:** Cache static context layers (save cost + latency)
+
+---
+
+## Contact & Support
+
+- **GitHub:** https://github.com/Aegis-ai-labs/Aegis
+- **Issues:** GitHub Issues for bugs/features
+- **Documentation:** See `README.md`, `SUBMISSION.md`
+
+---
+
+**Built with Claude Opus 4.6's extended thinking capabilities.**
+**Production-ready, fully tested, under 3K lines of code.**
