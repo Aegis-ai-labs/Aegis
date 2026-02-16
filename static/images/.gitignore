@@ -1,0 +1,6 @@
+# Ignore actual images when they are added (user will download from Google Drive)
+# Keep only the SVG placeholders in git
+aegis-hardware.png
+aegis-hardware.jpg
+aegis-hardware.jpeg
+prototype-design.png
