@@ -305,6 +305,40 @@
             line-height: 1.6;
         }
 
+        /* Status Cards */
+        .status-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            background: #666;
+            animation: pulse-slow 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--primary);
+        }
+
+        .status-dot.disconnected {
+            background: #ff6666;
+            animation: none;
+        }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
         /* Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
@@ -395,8 +429,33 @@
         <!-- Dashboard Tab -->
         <div id="dashboard" class="tab">
             <div class="dashboard-content">
-                <h2 style="margin-bottom: 30px;">Your Health & Wealth Summary</h2>
+                <h2 style="margin-bottom: 20px;">Health & Wealth Dashboard</h2>
 
+                <!-- Connection Status -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                    <div class="status-card">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="status-dot" id="backend-status"></span>
+                            <span>Backend (8000)</span>
+                        </div>
+                    </div>
+                    <div class="status-card">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="status-dot" id="bridge-status"></span>
+                            <span>Bridge (3000)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Transcription Feed -->
+                <div class="info-box" style="margin-bottom: 20px;">
+                    <h3>Live Transcription (ESP32 & Bridge)</h3>
+                    <div id="transcription-feed" style="background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 6px; max-height: 200px; overflow-y: auto; min-height: 100px; font-family: monospace; font-size: 12px; color: var(--primary);">
+                        <div style="color: var(--text-muted);">Waiting for audio input...</div>
+                    </div>
+                </div>
+
+                <!-- Stats -->
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-value">6.8h</div>
@@ -511,6 +570,122 @@
 
         // Connect WebSocket when page loads
         connectWebSocket();
+
+        // Dashboard: Monitor backend and bridge connections
+        const transcriptionFeed = document.getElementById('transcription-feed');
+        const backendStatusDot = document.getElementById('backend-status');
+        const bridgeStatusDot = document.getElementById('bridge-status');
+        let backendConnected = false;
+        let bridgeConnected = false;
+
+        function addTranscriptionLine(text, type = 'info') {
+            const line = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString();
+            let prefix = '';
+            let color = 'var(--text-muted)';
+
+            if (type === 'mic') {
+                prefix = '[MIC] ';
+                color = '#ffaa00';
+            } else if (type === 'stt') {
+                prefix = '[STT] ';
+                color = 'var(--primary)';
+            } else if (type === 'claude') {
+                prefix = '[CLAUDE] ';
+                color = 'var(--secondary)';
+            } else if (type === 'tts') {
+                prefix = '[TTS] ';
+                color = '#00ff00';
+            }
+
+            line.style.color = color;
+            line.textContent = `${timestamp} ${prefix}${text}`;
+            transcriptionFeed.appendChild(line);
+            transcriptionFeed.scrollTop = transcriptionFeed.scrollHeight;
+
+            // Keep last 50 lines
+            const lines = transcriptionFeed.querySelectorAll('div');
+            if (lines.length > 50) {
+                lines[0].remove();
+            }
+        }
+
+        // Monitor backend connection (port 8000)
+        function monitorBackend() {
+            const checkInterval = setInterval(() => {
+                fetch('http://localhost:8000/health', { method: 'GET', mode: 'no-cors' })
+                    .then(() => {
+                        if (!backendConnected) {
+                            backendConnected = true;
+                            backendStatusDot.classList.add('connected');
+                            backendStatusDot.classList.remove('disconnected');
+                            addTranscriptionLine('Backend connected (port 8000)', 'info');
+                        }
+                    })
+                    .catch(() => {
+                        if (backendConnected) {
+                            backendConnected = false;
+                            backendStatusDot.classList.remove('connected');
+                            backendStatusDot.classList.add('disconnected');
+                            addTranscriptionLine('Backend disconnected', 'info');
+                        }
+                    });
+            }, 5000);
+        }
+
+        // Monitor bridge connection (port 3000)
+        function monitorBridge() {
+            const checkInterval = setInterval(() => {
+                fetch('http://localhost:3000/health', { method: 'GET', mode: 'no-cors' })
+                    .then(() => {
+                        if (!bridgeConnected) {
+                            bridgeConnected = true;
+                            bridgeStatusDot.classList.add('connected');
+                            bridgeStatusDot.classList.remove('disconnected');
+                            addTranscriptionLine('Bridge connected (port 3000)', 'info');
+                        }
+                    })
+                    .catch(() => {
+                        if (bridgeConnected) {
+                            bridgeConnected = false;
+                            bridgeStatusDot.classList.remove('connected');
+                            bridgeStatusDot.classList.add('disconnected');
+                            addTranscriptionLine('Bridge disconnected', 'info');
+                        }
+                    });
+            }, 5000);
+        }
+
+        // Listen to chat messages and display on transcription feed
+        function setupTranscriptionMonitoring() {
+            // Intercept messages sent to backend and show them in feed
+            const originalWebSocketSend = WebSocket.prototype.send;
+            WebSocket.prototype.send = function(data) {
+                try {
+                    const msg = JSON.parse(data);
+                    if (msg.text) {
+                        addTranscriptionLine(msg.text, 'mic');
+                    }
+                } catch (e) {}
+                return originalWebSocketSend.call(this, data);
+            };
+
+            // Listen to received messages
+            const originalAddMessage = window.addMessage;
+            window.addMessage = function(text, role) {
+                if (role === 'assistant') {
+                    addTranscriptionLine(text, 'claude');
+                }
+                return originalAddMessage.call(this, text, role);
+            };
+        }
+
+        // Start monitoring
+        monitorBackend();
+        monitorBridge();
+        setupTranscriptionMonitoring();
+
+        addTranscriptionLine('Dashboard ready. Monitoring connections...', 'info');
     </script>
 </body>
 </html>
