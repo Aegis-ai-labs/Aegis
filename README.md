@@ -1,3 +1,5 @@
+![AEGIS Banner](https://drive.google.com/uc?export=view&id=1U_Yo3SlqEXk9FVih5E0w1_cEwq0jfMj6)
+
 # AEGIS — AI Wearable Personal Assistant
 
 > **Contextual intelligence for everyone.** An AI assistant that actually knows your body.
