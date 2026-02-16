@@ -53,22 +53,25 @@ def terminal():
                     if not user_input:
                         continue
 
-                    # Send message
-                    await websocket.send(json.dumps({"message": user_input}))
+                    # Send message (server expects {"text": ...})
+                    await websocket.send(json.dumps({"text": user_input}))
 
                     # Receive streaming response
                     click.echo("\nAEGIS1: ", nl=False)
                     while True:
                         try:
-                            msg = await asyncio.wait_for(websocket.recv(), timeout=0.5)
+                            msg = await asyncio.wait_for(websocket.recv(), timeout=30.0)
                             data = json.loads(msg)
-                            if data.get("type") == "chunk":
-                                click.echo(data.get("text", ""), nl=False)
-                            elif data.get("type") == "done":
+                            if data.get("error"):
+                                click.echo(f"[Error: {data['error']}]")
+                                break
+                            elif data.get("done"):
                                 click.echo("\n")
                                 break
+                            else:
+                                click.echo(data.get("text", ""), nl=False)
                         except asyncio.TimeoutError:
-                            click.echo("\n")
+                            click.echo("\n[Timeout]")
                             break
         except ConnectionRefusedError:
             click.echo(
@@ -103,19 +106,14 @@ def import_health(xml_path: str):
 @main.command()
 def seed():
     """Seed database with demo data."""
-    import asyncio
-
-    async def seed_data():
-        from aegis.db import init_db
-
-        click.echo("🌱 Seeding database with demo data...")
-        await init_db()
-        click.echo("✅ Demo data loaded")
+    from aegis.db import ensure_db
 
     try:
-        asyncio.run(seed_data())
+        click.echo("Seeding database with demo data...")
+        ensure_db()
+        click.echo("Demo data loaded")
     except Exception as e:
-        click.echo(f"❌ Error seeding database: {e}", err=True)
+        click.echo(f"Error seeding database: {e}", err=True)
         sys.exit(1)
 
 

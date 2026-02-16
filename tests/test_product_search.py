@@ -17,10 +17,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from bridge.main import app
-from bridge.db import init_db, seed_products, get_db
-from bridge.config import settings
-from bridge.rate_limit import rate_limiter
+from aegis.main import app
+from aegis.db import init_db, seed_products, get_db
+from aegis.config import settings
+from aegis.rate_limit import rate_limiter
 
 
 @pytest.fixture(scope="session")

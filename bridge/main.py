@@ -13,7 +13,9 @@ import logging
 import re
 import time
 from collections import defaultdict
+from pathlib import Path
 
+import anthropic
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,10 +23,12 @@ from fastapi.staticfiles import StaticFiles
 from bridge.config import settings
 from bridge.db import ensure_db
 from bridge.audio import pcm_to_wav, detect_silence
-from bridge.audio_feedback import generate_listening_chime, generate_thinking_tone, generate_success_chime
+from bridge.audio_feedback import generate_thinking_tone, generate_success_chime
 from bridge.stt import transcribe_wav
 from bridge.tts import TTSEngine
-from bridge.claude_client import ClaudeClient
+from bridge.llm_router import get_llm_client
+from bridge.claude_client import set_dashboard_broadcast as set_claude_dashboard_broadcast
+from bridge.gemini_client import set_dashboard_broadcast as set_gemini_dashboard_broadcast
 
 # Configure logging
 logging.basicConfig(
@@ -67,11 +71,20 @@ async def broadcast_to_dashboard(event: dict):
     # Clean up disconnected clients
     dashboard_clients.difference_update(disconnected)
 
+# Register dashboard broadcast callback for both LLM clients
+set_claude_dashboard_broadcast(broadcast_to_dashboard)
+set_gemini_dashboard_broadcast(broadcast_to_dashboard)
+
+
+# Project root (parent of bridge package) for static files
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
     """Serve the dashboard HTML."""
-    with open("static/index.html") as f:
+    index_path = _STATIC_DIR / "index.html"
+    with open(index_path) as f:
         return f.read()
 
 
@@ -92,7 +105,9 @@ async def api_status():
                 "count": len(measurements),
             }
     return {
+        "esp32_connected": len(connections) > 0,
         "connections": len(connections),
+        "esp32_clients": list(connections.keys()),
         "latency": stats,
     }
 
@@ -110,7 +125,19 @@ async def dashboard_websocket(websocket: WebSocket):
         from bridge.db import get_db
         from datetime import datetime, timedelta
 
-        health_context = build_health_context(days=7)
+        health_context_str = build_health_context(days=7)
+
+        # Parse health context string into structured stats for dashboard
+        stats = {}
+        if health_context_str and health_context_str != "No recent health data available." and health_context_str != "No recent health or spending data available.":
+            # Parse "Sleep: avg 7.2h | Exercise: 30min | Mood: 8.5" format
+            parts = health_context_str.split(" | ")
+            for part in parts:
+                if ":" in part:
+                    key, value = part.split(":", 1)
+                    stats[key.strip()] = value.strip()
+        else:
+            stats = {"Status": "No recent data"}
 
         # Get last 7 days of sleep for chart
         db = get_db()
@@ -126,7 +153,7 @@ async def dashboard_websocket(websocket: WebSocket):
 
         await websocket.send_json({
             "type": "health_summary",
-            "stats": {"Health Context": health_context},
+            "stats": stats,  # Now properly structured object
             "daily_sleep": daily_sleep,
         })
 
@@ -154,7 +181,7 @@ async def audio_websocket(websocket: WebSocket):
     client_id = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
     logger.info("ESP32 connected: %s", client_id)
 
-    claude_client = ClaudeClient()
+    llm_client = get_llm_client()
     audio_buffer = bytearray()
     silence_counter = 0
     is_recording = False
@@ -173,7 +200,13 @@ async def audio_websocket(websocket: WebSocket):
         })
 
         while True:
-            data = await websocket.receive()
+            try:
+                data = await websocket.receive()
+            except RuntimeError as e:
+                if "disconnect" in str(e).lower():
+                    logger.info("ESP32 disconnected: %s", client_id)
+                    break
+                raise
 
             # Handle binary audio data
             if "bytes" in data:
@@ -184,8 +217,7 @@ async def audio_websocket(websocket: WebSocket):
                     is_recording = True
                     recording_start = time.monotonic()
                     logger.debug("Recording started")
-                    # Send "listening" chime
-                    await websocket.send_bytes(generate_listening_chime())
+                    # No listening chime on first chunk: speaker only outputs after user speaks and pipeline runs
 
                 # Silence detection
                 is_silent = detect_silence(pcm_chunk, threshold=500)
@@ -203,13 +235,14 @@ async def audio_websocket(websocket: WebSocket):
                 if silence_counter >= SILENCE_CHUNKS_TO_STOP and len(audio_buffer) > 3200:
                     logger.info("End of speech: %d bytes, %d ms", len(audio_buffer), int(elapsed_ms))
                     await websocket.send_json({"type": "status", "state": "processing"})
+                    await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
 
                     # Send "thinking" tone
                     await websocket.send_bytes(generate_thinking_tone())
 
                     # Run the full pipeline
                     await process_pipeline(
-                        websocket, claude_client, bytes(audio_buffer)
+                        websocket, llm_client, bytes(audio_buffer)
                     )
 
                     # Reset
@@ -218,6 +251,7 @@ async def audio_websocket(websocket: WebSocket):
                     is_recording = False
 
                     await websocket.send_json({"type": "status", "state": "idle"})
+                    await broadcast_to_dashboard({"type": "pipeline_state", "state": "idle"})
 
             # Handle JSON control messages
             elif "text" in data:
@@ -227,15 +261,19 @@ async def audio_websocket(websocket: WebSocket):
                         # Explicit end-of-speech from ESP32 (button release)
                         if len(audio_buffer) > 3200:
                             await websocket.send_json({"type": "status", "state": "processing"})
+                            await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
+                            # Send thinking tone (consistent with silence-based path)
+                            await websocket.send_bytes(generate_thinking_tone())
                             await process_pipeline(
-                                websocket, claude_client, bytes(audio_buffer)
+                                websocket, llm_client, bytes(audio_buffer)
                             )
                             audio_buffer.clear()
                             silence_counter = 0
                             is_recording = False
                             await websocket.send_json({"type": "status", "state": "idle"})
+                            await broadcast_to_dashboard({"type": "pipeline_state", "state": "idle"})
                     elif msg.get("type") == "reset":
-                        claude_client.reset_conversation()
+                        llm_client.reset_conversation()
                         audio_buffer.clear()
                         silence_counter = 0
                         is_recording = False
@@ -244,13 +282,76 @@ async def audio_websocket(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("ESP32 disconnected: %s", client_id)
+    except RuntimeError as e:
+        if "disconnect" in str(e).lower():
+            logger.info("ESP32 disconnected: %s", client_id)
+        else:
+            logger.error("WebSocket error: %s", e, exc_info=True)
     except Exception as e:
         logger.error("WebSocket error: %s", e, exc_info=True)
     finally:
         connections.pop(client_id, None)
 
 
-async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, audio_data: bytes):
+@app.on_event("startup")
+async def startup_event():
+    """Initialize mDNS service discovery for ESP32 auto-connect."""
+    if not settings.server_discovery_enabled:
+        return
+    
+    try:
+        from zeroconf import ServiceInfo, Zeroconf
+        import socket
+        
+        # Get the local IP address
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        
+        # Register mDNS service (type must start with '_' per RFC 6763)
+        service_type = f"_{settings.mdns_service_name}._tcp.local."
+        service_info = ServiceInfo(
+            service_type,
+            f"{settings.mdns_service_name}.{service_type}",
+            addresses=[socket.inet_aton(local_ip)],
+            port=settings.bridge_port,
+            properties={
+                "path": "/ws/audio",
+                "version": "0.1.0",
+                "model": "AEGIS1",
+            },
+            server=f"{hostname}.local.",
+        )
+        
+        zeroconf = Zeroconf()
+        zeroconf.register_service(service_info)
+        logger.info(
+            "mDNS registered: %s.local:%d (ESP32 can auto-discover)",
+            settings.mdns_service_name, settings.bridge_port
+        )
+        
+        # Store for cleanup
+        app.state.zeroconf = zeroconf
+        app.state.service_info = service_info
+        
+    except ImportError:
+        logger.warning("zeroconf not installed - mDNS discovery disabled. Install: pip install zeroconf")
+    except Exception as e:
+        logger.warning("Failed to register mDNS: %s", str(e))
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up mDNS registration."""
+    if hasattr(app.state, "zeroconf"):
+        try:
+            app.state.zeroconf.unregister_service(app.state.service_info)
+            app.state.zeroconf.close()
+            logger.info("mDNS service unregistered")
+        except Exception as e:
+            logger.warning("Error unregistering mDNS: %s", str(e))
+
+
+async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
     """Full speech-to-speech pipeline with sentence-level streaming."""
     pipeline_start = time.monotonic()
 
@@ -276,49 +377,80 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
     sentence_buffer = ""
     first_audio_sent = False
 
-    async for chunk in claude_client.get_response(text):
-        full_response += chunk
-        sentence_buffer += chunk
+    try:
+        async for chunk in llm_client.get_response(text):
+            full_response += chunk
+            sentence_buffer += chunk
 
-        # Check for sentence boundary — stream TTS immediately
-        sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer)
-        if len(sentences) > 1:
-            # We have at least one complete sentence
-            for complete_sentence in sentences[:-1]:
-                if complete_sentence.strip():
-                    tts_start = time.monotonic()
-                    pcm_audio = tts_engine.synthesize(complete_sentence.strip())
-                    tts_ms = (time.monotonic() - tts_start) * 1000
+            # Check for sentence boundary — stream TTS immediately
+            sentences = re.split(r'(?<=[.!?])\s+', sentence_buffer)
+            if len(sentences) > 1:
+                # We have at least one complete sentence
+                for complete_sentence in sentences[:-1]:
+                    if complete_sentence.strip():
+                        tts_start = time.monotonic()
+                        pcm_audio = tts_engine.synthesize(complete_sentence.strip())
+                        tts_ms = (time.monotonic() - tts_start) * 1000
 
-                    if pcm_audio:
-                        if not first_audio_sent:
-                            perceived_ms = (time.monotonic() - pipeline_start) * 1000
-                            log_latency("perceived", perceived_ms)
-                            logger.info("First audio at %.0fms (perceived latency)", perceived_ms)
-                            first_audio_sent = True
+                        if pcm_audio:
+                            if not first_audio_sent:
+                                perceived_ms = (time.monotonic() - pipeline_start) * 1000
+                                log_latency("perceived", perceived_ms)
+                                logger.info("First audio at %.0fms (perceived latency)", perceived_ms)
+                                first_audio_sent = True
 
-                        log_latency("tts", tts_ms)
-                        await websocket.send_json({"type": "status", "state": "speaking"})
-                        # Send PCM in chunks to avoid overwhelming ESP32
-                        chunk_size = 6400  # 200ms at 16kHz
-                        for i in range(0, len(pcm_audio), chunk_size):
-                            await websocket.send_bytes(pcm_audio[i:i + chunk_size])
-                            await asyncio.sleep(0.01)  # Small delay for ESP32 to buffer
+                            log_latency("tts", tts_ms)
+                            try:
+                                await websocket.send_json({"type": "status", "state": "speaking"})
+                                await broadcast_to_dashboard({"type": "pipeline_state", "state": "speaking"})
+                                # Send PCM in chunks to avoid overwhelming ESP32
+                                chunk_size = 6400  # 200ms at 16kHz
+                                for i in range(0, len(pcm_audio), chunk_size):
+                                    await websocket.send_bytes(pcm_audio[i:i + chunk_size])
+                                    await asyncio.sleep(0.01)  # Small delay for ESP32 to buffer
+                            except WebSocketDisconnect:
+                                logger.warning("ESP32 disconnected during audio transmission")
+                                return
 
-            sentence_buffer = sentences[-1]  # Keep incomplete sentence
+                sentence_buffer = sentences[-1]  # Keep incomplete sentence
 
-    # Send any remaining text
-    if sentence_buffer.strip():
-        pcm_audio = tts_engine.synthesize(sentence_buffer.strip())
-        if pcm_audio:
-            if not first_audio_sent:
-                perceived_ms = (time.monotonic() - pipeline_start) * 1000
-                log_latency("perceived", perceived_ms)
-                first_audio_sent = True
-            chunk_size = 6400
-            for i in range(0, len(pcm_audio), chunk_size):
-                await websocket.send_bytes(pcm_audio[i:i + chunk_size])
-                await asyncio.sleep(0.01)
+        # Send any remaining text
+        if sentence_buffer.strip():
+            pcm_audio = tts_engine.synthesize(sentence_buffer.strip())
+            if pcm_audio:
+                if not first_audio_sent:
+                    perceived_ms = (time.monotonic() - pipeline_start) * 1000
+                    log_latency("perceived", perceived_ms)
+                    first_audio_sent = True
+                chunk_size = 6400
+                try:
+                    for i in range(0, len(pcm_audio), chunk_size):
+                        await websocket.send_bytes(pcm_audio[i:i + chunk_size])
+                        await asyncio.sleep(0.01)
+                except WebSocketDisconnect:
+                    logger.warning("ESP32 disconnected during final audio transmission")
+                    return
+
+    except anthropic.APIError as e:
+        logger.error("Claude API error: %s", str(e), exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Claude API error. Please check your API key and try again."
+            })
+        except WebSocketDisconnect:
+            logger.warning("ESP32 disconnected before error message could be sent")
+        return
+    except Exception as e:
+        logger.error("Unexpected error in LLM processing: %s", str(e), exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": "An error occurred during processing. Please try again."
+            })
+        except WebSocketDisconnect:
+            logger.warning("ESP32 disconnected before error message could be sent")
+        return
 
     llm_ms = (time.monotonic() - llm_start) * 1000
     log_latency("llm", llm_ms)
@@ -330,21 +462,25 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
     await broadcast_to_dashboard({
         "type": "assistant_message",
         "text": full_response,
-        "model": "haiku" if "haiku" in str(claude_client) else "opus",
+        "model": llm_client.__class__.__name__.lower(),  # "claudeclient" or "geminiclient"
         "latency_ms": llm_ms,
     })
 
-    # Send "success" chime
-    await websocket.send_bytes(generate_success_chime())
+    # Send "success" chime and final status
+    try:
+        await websocket.send_bytes(generate_success_chime())
 
-    await websocket.send_json({
-        "type": "done",
-        "latency": {
-            "stt_ms": round(stt_ms, 1),
-            "llm_ms": round(llm_ms, 1),
-            "total_ms": round(total_ms, 1),
-        },
-    })
+        await websocket.send_json({
+            "type": "done",
+            "latency": {
+                "stt_ms": round(stt_ms, 1),
+                "llm_ms": round(llm_ms, 1),
+                "total_ms": round(total_ms, 1),
+            },
+        })
+    except WebSocketDisconnect:
+        logger.warning("ESP32 disconnected before success chime could be sent")
+        # Don't return - let logger.info below execute
 
     logger.info(
         "Pipeline complete: stt=%.0fms, llm=%.0fms, total=%.0fms | %s → %s",
@@ -356,15 +492,45 @@ async def process_pipeline(websocket: WebSocket, claude_client: ClaudeClient, au
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info("=" * 60)
-    logger.info("  AEGIS1 Bridge Server Starting")
-    logger.info("=" * 60)
-    logger.info("  Port: %d", settings.bridge_port)
-    logger.info("  Claude: Haiku=%s, Opus=%s", settings.claude_haiku_model, settings.claude_opus_model)
-    logger.info("  STT: faster-whisper (%s)", settings.stt_model)
-    logger.info("  TTS: Piper")
-    logger.info("  WebSocket: ws://%s:%d/ws/audio", settings.bridge_host, settings.bridge_port)
-    logger.info("=" * 60)
+    logger.info("=" * 70)
+    logger.info("  AEGIS1 BRIDGE SERVER STARTING")
+    logger.info("=" * 70)
+    
+    # LLM Configuration
+    if settings.use_local_model:
+        logger.info("  LLM: Ollama (local testing)")
+        logger.info("       URL: %s", settings.ollama_url)
+        logger.info("       Model: %s (FREE - perfect for development)", settings.ollama_model)
+    elif settings.use_gemini_for_testing:
+        logger.info("  LLM: Gemini (budget testing)")
+    else:
+        logger.info("  LLM: Claude (production)")
+        logger.info("       Haiku: %s", settings.claude_haiku_model)
+        logger.info("       Opus: %s", settings.claude_opus_model)
+    
+    # Server Configuration
+    logger.info("  Server:")
+    logger.info("       Host: %s:%d", settings.bridge_host, settings.bridge_port)
+    logger.info("       WebSocket: ws://localhost:%d/ws/audio", settings.bridge_port)
+    logger.info("       Dashboard: http://localhost:%d/", settings.bridge_port)
+    
+    # Audio Configuration
+    logger.info("  Audio:")
+    logger.info("       STT: faster-whisper (%s)", settings.stt_model)
+    logger.info("       TTS: Piper")
+    logger.info("       Sample Rate: %d Hz", settings.sample_rate)
+    
+    # Service Discovery
+    if settings.server_discovery_enabled:
+        logger.info("  mDNS Discovery:")
+        logger.info("       Service: %s.local:%d", settings.mdns_service_name, settings.bridge_port)
+        logger.info("       ESP32 can auto-discover and connect")
+    
+    # Test Mode
+    if settings.test_mode:
+        logger.info("  TEST MODE: API key validation disabled")
+    
+    logger.info("=" * 70)
 
     uvicorn.run(
         "bridge.main:app",

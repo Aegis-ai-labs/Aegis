@@ -7,7 +7,7 @@ import pytest
 
 from aegis.db import init_db, seed_demo_data, get_db
 from aegis.tools import health, wealth
-from aegis.tools.registry import execute_tool
+from aegis.tools.registry import dispatch_tool
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -80,13 +80,13 @@ async def test_calculate_savings_goal():
 
 @pytest.mark.asyncio
 async def test_execute_tool_dispatch():
-    result_json = await execute_tool("get_health_context", {"days": 3})
+    result_json = await dispatch_tool("get_health_context", {"days": 3})
     result = json.loads(result_json)
     assert "data" in result
 
 
 @pytest.mark.asyncio
 async def test_execute_tool_unknown():
-    result_json = await execute_tool("nonexistent_tool", {})
+    result_json = await dispatch_tool("nonexistent_tool", {})
     result = json.loads(result_json)
     assert "error" in result

@@ -1,0 +1,59 @@
+#ifndef AEGIS_CONFIG_H
+#define AEGIS_CONFIG_H
+
+// ================================================================
+// WiFi Configuration - UPDATE WITH YOUR CREDENTIALS
+// ================================================================
+#define WIFI_SSID "aman"
+#define WIFI_PASSWORD "aman2511"
+
+// ================================================================
+// AEGIS1 Bridge Server Configuration
+// ================================================================
+#define BRIDGE_HOST "10.100.110.206"  // Your Mac/laptop IP (run: ifconfig | grep "inet " | grep -v 127.0.0.1)
+#define BRIDGE_PORT 8000
+
+// ================================================================
+// Hardware Pin Configuration (ESP32 DevKit V1 + INMP441 + PAM8403)
+// ================================================================
+
+// I2S0 - INMP441 Microphone (RX only)
+#define I2S_MIC_PORT    I2S_NUM_0
+#define I2S_MIC_BCLK    13
+#define I2S_MIC_LRCLK   14
+#define I2S_MIC_DIN     33
+
+// PAM8403 Analog Amplifier (DAC output)
+#define AMP_DAC_PIN     25  // GPIO 25 = DAC1
+
+
+// Playback volume: reduce if amp is too loud for small speaker (1-100 percent)
+#define PLAYBACK_VOLUME_PERCENT  20  // 20% = safe for small speaker; raise if too quiet
+// Max peak: cap output so DAC never exceeds this % of full scale (reduces crackling)
+#define PLAYBACK_MAX_PEAK_PERCENT 70  // 70% = gentle limit; use 100 for no cap
+
+// LED and Button Pins
+#define LED_PIN         2   // Built-in blue LED
+#define BUTTON_PIN      0   // BOOT button (built-in)
+
+// ================================================================
+// I2S & Audio Configuration
+// ================================================================
+#define I2S_SAMPLE_RATE         16000
+#define I2S_BITS_PER_SAMPLE     I2S_BITS_PER_SAMPLE_16BIT
+#define I2S_CHANNEL_FORMAT      I2S_CHANNEL_FMT_ONLY_LEFT
+
+#define DMA_BUF_COUNT  8
+#define DMA_BUF_LEN    512
+
+#define CHUNK_SIZE_MS           200
+#define CHUNK_SIZE_BYTES        (I2S_SAMPLE_RATE * 2 * CHUNK_SIZE_MS / 1000)
+#define MAX_RECORDING_TIME_MS   5000
+
+#define LED_READY      0
+#define LED_LISTENING  1
+#define LED_THINKING   2
+#define LED_SPEAKING   3
+#define LED_ERROR      4
+
+#endif
