@@ -6,7 +6,19 @@ Firmware for the AEGIS1 voice pendant. Connects to the AEGIS1 bridge at `BRIDGE_
 
 ---
 
-## Hardware
+## Hardware Photos
+
+![AEGIS1 Real Hardware](../static/images/aegis-hardware.svg)
+
+*Real ESP32 pendant with microphone and speaker*
+
+![AEGIS1 Prototype Design](../static/images/prototype-design.png)
+
+*Prototype design concept*
+
+---
+
+## Hardware Specifications
 
 - **Board:** ESP32 DevKit V1 (DOIT)
 - **Mic:** INMP441 I2S (BCLK=13, LRCLK=14, DIN=33)
