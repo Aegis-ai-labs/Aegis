@@ -17,8 +17,9 @@ def generate_listening_chime() -> bytes:
     t = np.linspace(0, duration, samples)
     
     # Two ascending tones: C5 (523Hz) → E5 (659Hz)
-    tone1 = np.sin(2 * np.pi * 523 * t[:samples//2]) * 0.3
-    tone2 = np.sin(2 * np.pi * 659 * t[samples//2:]) * 0.3
+    # Reduced amplitude (0.2 instead of 0.3) for small speakers to prevent distortion
+    tone1 = np.sin(2 * np.pi * 523 * t[:samples//2]) * 0.2
+    tone2 = np.sin(2 * np.pi * 659 * t[samples//2:]) * 0.2
     
     audio = np.concatenate([tone1, tone2])
     
@@ -37,9 +38,10 @@ def generate_thinking_tone() -> bytes:
     t = np.linspace(0, duration, samples)
     
     # Low frequency pulse: 220Hz (A3) with 4Hz amplitude modulation
+    # Reduced amplitude (0.15 instead of 0.2) for small speakers to prevent distortion
     carrier = np.sin(2 * np.pi * 220 * t)
     modulator = 0.5 + 0.5 * np.sin(2 * np.pi * 4 * t)
-    audio = carrier * modulator * 0.2
+    audio = carrier * modulator * 0.15
     
     # Convert to 16-bit PCM
     pcm_int16 = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
@@ -56,8 +58,9 @@ def generate_success_chime() -> bytes:
     t = np.linspace(0, duration, samples)
     
     # Descending harmonious tones: G5 (784Hz) → C5 (523Hz)
-    tone1 = np.sin(2 * np.pi * 784 * t[:samples//2]) * 0.25
-    tone2 = np.sin(2 * np.pi * 523 * t[samples//2:]) * 0.25
+    # Reduced amplitude (0.18 instead of 0.25) for small speakers to prevent distortion
+    tone1 = np.sin(2 * np.pi * 784 * t[:samples//2]) * 0.18
+    tone2 = np.sin(2 * np.pi * 523 * t[samples//2:]) * 0.18
     
     audio = np.concatenate([tone1, tone2])
     

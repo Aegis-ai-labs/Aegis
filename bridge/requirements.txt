@@ -26,12 +26,14 @@ zeroconf>=0.131.0
 # Speech-to-Text
 faster-whisper>=1.0.0
 
-# Text-to-Speech
+# Text-to-Speech (pathvalidate required by piper-tts CLI)
 piper-tts>=1.2.0
+pathvalidate>=2.5.0
 
 # Audio
 pydub>=0.25.0
 numpy>=1.24.0
+scipy>=1.11.0  # For audio resampling (TTS output to 16kHz)
 
 # Dev & tests
 pytest>=8.0.0

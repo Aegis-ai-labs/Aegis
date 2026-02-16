@@ -28,9 +28,9 @@
 
 
 // Playback volume: reduce if amp is too loud for small speaker (1-100 percent)
-#define PLAYBACK_VOLUME_PERCENT  20  // 20% = safe for small speaker; raise if too quiet
-// Max peak: cap output so DAC never exceeds this % of full scale (reduces crackling)
-#define PLAYBACK_MAX_PEAK_PERCENT 70  // 70% = gentle limit; use 100 for no cap
+#define PLAYBACK_VOLUME_PERCENT  8   // 8% = very low for poor quality speaker; prevents distortion
+// Max peak: cap output so DAC never exceeds this % of full scale (reduces crackling/high-pitched distortion)
+#define PLAYBACK_MAX_PEAK_PERCENT 30  // 30% = very aggressive limit for poor speaker; prevents harsh clipping/screaming
 
 // LED and Button Pins
 #define LED_PIN         2   // Built-in blue LED

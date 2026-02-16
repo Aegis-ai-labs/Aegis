@@ -71,7 +71,8 @@ class Settings(BaseSettings):
     stt_language: str = "en"
     stt_beam_size: int = 1
     # Set STT_VAD_FILTER=false if VAD strips all audio and STT returns empty often
-    stt_vad_filter: bool = Field(default=True, alias="STT_VAD_FILTER")
+    # DISABLED BY DEFAULT: VAD filter is too aggressive for low mic levels, removes valid speech
+    stt_vad_filter: bool = Field(default=False, alias="STT_VAD_FILTER")
 
     # Voice activity / recording
     silence_chunks_to_stop: int = 8

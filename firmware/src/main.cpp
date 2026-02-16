@@ -14,6 +14,7 @@
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include <driver/i2s.h>
+#include <string.h>  // For memset
 #include "../config.h"
 
 WebSocketsClient webSocket;
@@ -33,12 +34,21 @@ size_t bytes_read = 0;
 #define PLAY_SAMPLE_RATE 16000
 #define PLAY_BUF_SAMPLES 16000   // 1 second
 #define PLAY_CHUNK       160    // 10ms per loop drain
-static int16_t play_buf[PLAY_BUF_SAMPLES];
+static int16_t play_buf[PLAY_BUF_SAMPLES] = {0};  // Initialize to zero - no audio until bridge sends data
 static size_t play_head = 0;
-static size_t play_len = 0;
+static size_t play_len = 0;  // Starts at 0 - speaker silent until bridge sends audio
 
 // Max signed 8-bit magnitude after volume + peak cap (127 * PLAYBACK_MAX_PEAK_PERCENT / 100)
 #define PLAY_PEAK ((127 * PLAYBACK_MAX_PEAK_PERCENT) / 100)
+
+// Aggressive low-pass filtering for poor quality speakers
+// First-order IIR filter: y[n] = alpha * x[n] + (1-alpha) * y[n-1]
+// alpha = 0.15 gives cutoff ~2.0kHz (very aggressive filtering to reduce screaming/distortion)
+#define LP_ALPHA 0.15f
+static float lp_last = 0.0f;
+// Second-stage filter for extra smoothing
+#define LP_ALPHA2 0.25f
+static float lp_last2 = 0.0f;
 
 static void play_pcm_chunk() {
     if (play_len < PLAY_CHUNK) return;
@@ -46,11 +56,33 @@ static void play_pcm_chunk() {
         int16_t s = play_buf[play_head];
         play_head++;
         play_len--;
-        // Scale down for small speaker (PAM8403 strong vs weak speaker; avoids crackling)
+        
+        // First-stage aggressive low-pass filter (cutoff ~2kHz)
+        float filtered = LP_ALPHA * (float)s + (1.0f - LP_ALPHA) * lp_last;
+        lp_last = filtered;
+        
+        // Second-stage filter for extra smoothing (reduces harsh transitions)
+        float filtered2 = LP_ALPHA2 * filtered + (1.0f - LP_ALPHA2) * lp_last2;
+        lp_last2 = filtered2;
+        s = (int16_t)filtered2;
+        
+        // Scale down for poor quality speaker (very low volume to prevent distortion)
         int32_t scaled = ((int32_t)s * PLAYBACK_VOLUME_PERCENT) / 100;
-        // Cap peak so DAC never exceeds PLAY_PEAK; prevents harsh clipping
+        
+        // Aggressive peak capping to prevent screaming/distortion
         if (scaled > PLAY_PEAK) scaled = PLAY_PEAK;
         if (scaled < -PLAY_PEAK) scaled = -PLAY_PEAK;
+        
+        // Soft clipping: gradual rolloff instead of hard cap (smoother sound)
+        if (scaled > PLAY_PEAK * 0.8f) {
+            float excess = (float)(scaled - PLAY_PEAK * 0.8f) / (PLAY_PEAK * 0.2f);
+            scaled = (int32_t)(PLAY_PEAK * 0.8f + excess * PLAY_PEAK * 0.2f);
+        }
+        if (scaled < -PLAY_PEAK * 0.8f) {
+            float excess = (float)(-scaled - PLAY_PEAK * 0.8f) / (PLAY_PEAK * 0.2f);
+            scaled = -(int32_t)(PLAY_PEAK * 0.8f + excess * PLAY_PEAK * 0.2f);
+        }
+        
         uint8_t dac_val = (uint8_t)((int32_t)scaled + 128);
         dacWrite(AMP_DAC_PIN, dac_val);
         delayMicroseconds(62);  // ~16kHz
@@ -113,11 +145,26 @@ void websocket_event(WStype_t type, uint8_t *payload, size_t length) {
             Serial.println("[--] AEGIS1 bridge disconnected");
             cloud_connected = false;
             digitalWrite(LED_PIN, LOW);
+            // Clear audio buffer and reset filters to prevent any residual sound
+            play_len = 0;
+            play_head = 0;
+            memset(play_buf, 0, sizeof(play_buf));
+            lp_last = 0.0f;
+            lp_last2 = 0.0f;
             break;
         case WStype_ERROR:
             Serial.printf("[ERROR] WebSocket error: payload=%.*s\n", (int)length, payload ? (char*)payload : "(null)");
             cloud_connected = false;
             digitalWrite(LED_PIN, LOW);
+            // Clear audio buffer and reset filters to prevent any residual sound
+            play_len = 0;
+            play_head = 0;
+            memset(play_buf, 0, sizeof(play_buf));
+            lp_last = 0.0f;
+            lp_last2 = 0.0f;
+            play_head = 0;
+            memset(play_buf, 0, sizeof(play_buf));
+            lp_last = 0.0f;  // Reset low-pass filter state
             break;
         default:
             break;
@@ -138,6 +185,11 @@ void setup() {
 
     setup_i2s_mic();
     Serial.println("[OK] Mic ready");
+    
+    // Initialize audio buffer to zero - speaker silent until bridge sends audio
+    memset(play_buf, 0, sizeof(play_buf));
+    play_len = 0;
+    play_head = 0;
 
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -164,8 +216,40 @@ void loop() {
 
     if (cloud_connected) {
         size_t br = 0;
-        if (i2s_read(I2S_PORT, (void*)mic_buffer, SEND_CHUNK_BYTES, &br, 0) == ESP_OK && br > 0)
+        esp_err_t err = i2s_read(I2S_PORT, (void*)mic_buffer, SEND_CHUNK_BYTES, &br, 0);
+        if (err == ESP_OK && br > 0) {
+            // Debug: log mic reading stats periodically (every 100 chunks = ~1 second)
+            static int chunk_count = 0;
+            if (++chunk_count >= 100) {
+                chunk_count = 0;
+                // Calculate RMS for debugging
+                int32_t sum_sq = 0;
+                int sample_count = br / 2;
+                if (sample_count > 0) {
+                    for (int i = 0; i < sample_count; i++) {
+                        int16_t s = mic_buffer[i];
+                        sum_sq += (int32_t)s * s;
+                    }
+                    // Calculate RMS: sqrt(sum_sq / count)
+                    float mean_sq = (float)sum_sq / sample_count;
+                    // Simple sqrt approximation using Newton's method
+                    float rms = mean_sq > 0 ? mean_sq : 0.0f;
+                    if (rms > 0) {
+                        for (int i = 0; i < 5; i++) {
+                            rms = (rms + mean_sq / rms) / 2.0f;
+                        }
+                    }
+                    Serial.printf("[DEBUG] Mic: %d bytes, RMS~%.1f\n", (int)br, rms);
+                }
+            }
             webSocket.sendBIN((uint8_t*)mic_buffer, br);
+        } else if (err != ESP_OK) {
+            static unsigned long last_error = 0;
+            if (millis() - last_error >= 5000) {
+                last_error = millis();
+                Serial.printf("[ERROR] I2S read failed: %d\n", err);
+            }
+        }
     }
 
     play_pcm_chunk();

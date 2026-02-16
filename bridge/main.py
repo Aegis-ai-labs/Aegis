@@ -112,6 +112,57 @@ async def api_status():
     }
 
 
+@app.websocket("/ws/text")
+async def text_websocket(websocket: WebSocket):
+    """Text-only WebSocket for testing without audio hardware.
+    
+    Protocol:
+    - Client sends JSON: {"text": "user message"}
+    - Server streams JSON: {"text": "sentence chunk", "done": false}
+    - Final message: {"text": "", "done": true}
+    """
+    await websocket.accept()
+    logger.info("Text WebSocket connected")
+    
+    llm_client = get_llm_client()
+    
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                await websocket.send_json({"error": "Invalid JSON"})
+                continue
+
+            user_text = msg.get("text", "").strip()
+            if not user_text:
+                await websocket.send_json({"error": "Empty text"})
+                continue
+
+            if user_text.lower() == "/reset":
+                llm_client.reset_conversation()
+                await websocket.send_json({"text": "Conversation reset.", "done": True})
+                continue
+
+            logger.info("Text WebSocket user: %s", user_text)
+            t0 = time.monotonic()
+
+            try:
+                async for chunk in llm_client.get_response(user_text):
+                    await websocket.send_json({"text": chunk, "done": False})
+
+                await websocket.send_json({"text": "", "done": True})
+                elapsed = time.monotonic() - t0
+                logger.info("Text WebSocket response complete in %.2fs", elapsed)
+            except Exception as e:
+                logger.error("Text WebSocket error: %s", e, exc_info=True)
+                await websocket.send_json({"error": str(e), "done": True})
+
+    except WebSocketDisconnect:
+        logger.info("Text WebSocket disconnected")
+
+
 @app.websocket("/ws/dashboard")
 async def dashboard_websocket(websocket: WebSocket):
     """WebSocket for dashboard real-time updates."""
@@ -186,9 +237,11 @@ async def audio_websocket(websocket: WebSocket):
     silence_counter = 0
     is_recording = False
     recording_start = 0.0
+    pipeline_complete_time = 0.0  # Track when pipeline last completed
 
     SILENCE_CHUNKS_TO_STOP = settings.silence_chunks_to_stop
     MAX_RECORDING_MS = settings.max_recording_time_ms
+    PIPELINE_COOLDOWN_MS = 500  # Prevent false triggers immediately after pipeline completion
 
     connections[client_id] = {"connected_at": time.time()}
 
@@ -210,6 +263,12 @@ async def audio_websocket(websocket: WebSocket):
 
             # Handle binary audio data
             if "bytes" in data:
+                # Cooldown period after pipeline completion to prevent false triggers
+                time_since_pipeline = (time.monotonic() - pipeline_complete_time) * 1000
+                if pipeline_complete_time > 0 and time_since_pipeline < PIPELINE_COOLDOWN_MS:
+                    # During cooldown, ignore audio chunks to prevent false triggers
+                    continue
+                
                 pcm_chunk = data["bytes"]
                 audio_buffer.extend(pcm_chunk)
 
@@ -219,8 +278,9 @@ async def audio_websocket(websocket: WebSocket):
                     logger.debug("Recording started")
                     # No listening chime on first chunk: speaker only outputs after user speaks and pipeline runs
 
-                # Silence detection
-                is_silent = detect_silence(pcm_chunk, threshold=500)
+                # Silence detection - lowered threshold significantly (100 instead of 500) for low mic levels
+                # Threshold of 500 was too high, causing premature end-of-speech detection
+                is_silent = detect_silence(pcm_chunk, threshold=100)
                 if is_silent:
                     silence_counter += 1
                 else:
@@ -237,12 +297,13 @@ async def audio_websocket(websocket: WebSocket):
                     # Check if there was actual speech (not just silence/ambient noise)
                     from bridge.audio import calculate_rms
                     rms = calculate_rms(audio_buffer)
-                    MIN_SPEECH_RMS = 800  # Minimum RMS to consider it actual speech (not ambient noise)
-                    MIN_RECORDING_MS = 500  # Minimum recording duration to avoid false triggers
+                    # Lowered RMS threshold from 25 to 10 - mic levels are consistently 7-24 RMS
+                    MIN_SPEECH_RMS = 10  # Minimum RMS to consider it actual speech (very low mic levels)
+                    MIN_RECORDING_MS = 300  # Lowered from 500ms to 300ms - allow shorter valid speech
                     
-                    # Reject if audio is too quiet OR recording too short
+                    # Reject if audio is too quiet OR recording too short (DEBUG to avoid log flood)
                     if rms < MIN_SPEECH_RMS:
-                        logger.info("End of speech ignored: audio too quiet (RMS=%.0f < %d), likely ambient noise", rms, MIN_SPEECH_RMS)
+                        logger.debug("End of speech ignored: audio too quiet (RMS=%.1f < %.1f), likely ambient noise", rms, MIN_SPEECH_RMS)
                         # Reset and continue recording
                         audio_buffer.clear()
                         is_recording = False
@@ -250,27 +311,33 @@ async def audio_websocket(websocket: WebSocket):
                         continue
                     
                     if elapsed_ms < MIN_RECORDING_MS:
-                        logger.info("End of speech ignored: recording too short (%d ms < %d ms), likely false trigger", int(elapsed_ms), MIN_RECORDING_MS)
+                        logger.debug("End of speech ignored: recording too short (%d ms < %d ms), likely false trigger", int(elapsed_ms), MIN_RECORDING_MS)
                         # Reset and continue recording
                         audio_buffer.clear()
                         is_recording = False
                         silence_counter = 0
                         continue
                     
-                    logger.info("End of speech: %d bytes, %d ms, RMS=%.0f", len(audio_buffer), int(elapsed_ms), rms)
+                    logger.info("End of speech: %d bytes, %d ms, RMS=%.1f", len(audio_buffer), int(elapsed_ms), rms)
                     await websocket.send_json({"type": "status", "state": "processing"})
                     await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
 
+                    # Increased amplification from 2.0x to 4.0x - mic levels are extremely low (7-24 RMS)
+                    # This should boost audio enough for STT to process it
+                    from bridge.audio import amplify_pcm
+                    amplified_audio = amplify_pcm(bytes(audio_buffer), gain=4.0)
+                    
                     # Run the full pipeline - thinking tone will be sent INSIDE process_pipeline only if STT succeeds
                     # This prevents sending audio feedback for false triggers
                     await process_pipeline(
-                        websocket, llm_client, bytes(audio_buffer)
+                        websocket, llm_client, amplified_audio
                     )
 
-                    # Reset
+                    # Reset and set cooldown timestamp
                     audio_buffer.clear()
                     silence_counter = 0
                     is_recording = False
+                    pipeline_complete_time = time.monotonic()  # Start cooldown period
 
                     await websocket.send_json({"type": "status", "state": "idle"})
                     await broadcast_to_dashboard({"type": "pipeline_state", "state": "idle"})
@@ -279,18 +346,22 @@ async def audio_websocket(websocket: WebSocket):
             elif "text" in data:
                 try:
                     msg = json.loads(data["text"])
-                        if msg.get("type") == "end_of_speech":
+                    if msg.get("type") == "end_of_speech":
                         # Explicit end-of-speech from ESP32 (button release)
                         if len(audio_buffer) > 3200:
                             await websocket.send_json({"type": "status", "state": "processing"})
                             await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
+                            # Increased amplification from 2.0x to 4.0x - mic levels are extremely low
+                            from bridge.audio import amplify_pcm
+                            amplified_audio = amplify_pcm(bytes(audio_buffer), gain=4.0)
                             # Thinking tone will be sent inside process_pipeline only if STT succeeds
                             await process_pipeline(
-                                websocket, llm_client, bytes(audio_buffer)
+                                websocket, llm_client, amplified_audio
                             )
                             audio_buffer.clear()
                             silence_counter = 0
                             is_recording = False
+                            pipeline_complete_time = time.monotonic()  # Start cooldown period
                             await websocket.send_json({"type": "status", "state": "idle"})
                             await broadcast_to_dashboard({"type": "pipeline_state", "state": "idle"})
                     elif msg.get("type") == "reset":
