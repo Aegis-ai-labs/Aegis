@@ -12,10 +12,12 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .audio_buffer import AudioBuffer
 from .claude_client import ClaudeClient
@@ -61,6 +63,32 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AEGIS1 Bridge", lifespan=lifespan)
+
+# Configure static file serving
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    log.info(f"Static files mounted from {STATIC_DIR}")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    """Serve the landing page."""
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        with open(index_file) as f:
+            return f.read()
+    return "<h1>AEGIS1 Bridge</h1><p>Landing page not found</p>"
+
+
+@app.get("/{file_name}.html", response_class=HTMLResponse)
+async def serve_html(file_name: str):
+    """Serve HTML pages (chat, dashboard, architecture)."""
+    html_file = STATIC_DIR / f"{file_name}.html"
+    if html_file.exists():
+        with open(html_file) as f:
+            return f.read()
+    return f"<h1>404 Not Found</h1><p>{file_name}.html not found</p>"
 
 
 @app.get("/health")

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AEGIS1 - Body-Aware AI Assistant</title>
+    <title>AEGIS1 - AI Health & Wealth Assistant</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         :root {
             --primary: #00ff88;
             --primary-dark: #00cc6a;
@@ -21,18 +21,17 @@
             --text: #e0e0e0;
             --text-muted: #888;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: var(--background);
             color: var(--text);
             line-height: 1.6;
         }
-        
+
         /* Navigation */
         nav {
-            background: rgba(26, 26, 26, 0.8);
-            backdrop-filter: blur(12px);
+            background: rgba(26, 26, 26, 0.95);
             border-bottom: 1px solid var(--border);
             padding: 15px 20px;
             display: flex;
@@ -42,399 +41,476 @@
             top: 0;
             z-index: 100;
         }
-        
+
         .logo {
             font-size: 24px;
             font-weight: 700;
             color: var(--primary);
             letter-spacing: 2px;
         }
-        
+
         nav ul {
             display: flex;
             gap: 30px;
             list-style: none;
         }
-        
-        nav a {
+
+        nav button {
+            background: none;
+            border: none;
             color: var(--text-muted);
-            text-decoration: none;
-            font-weight: 500;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
             transition: color 0.3s;
+            padding: 8px 12px;
         }
-        
-        nav a:hover, nav a.active {
+
+        nav button:hover,
+        nav button.active {
             color: var(--primary);
         }
-        
-        /* Hero */
+
+        /* Tabs Container */
+        .tabs-container {
+            width: 100%;
+            height: calc(100vh - 70px);
+            overflow: hidden;
+        }
+
+        .tab {
+            display: none;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .tab.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Home Tab */
+        .home-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
         .hero {
             text-align: center;
-            padding: 100px 20px;
-            max-width: 1000px;
-            margin: 0 auto;
+            padding: 60px 20px;
         }
-        
+
         .hero h1 {
-            font-size: 56px;
+            font-size: 48px;
             margin-bottom: 20px;
             color: var(--primary);
-            letter-spacing: -1px;
         }
-        
-        .hero .tagline {
-            font-size: 20px;
+
+        .hero p {
+            font-size: 18px;
             color: var(--text-muted);
-            margin-bottom: 40px;
+            margin-bottom: 30px;
             max-width: 600px;
             margin-left: auto;
             margin-right: auto;
         }
-        
-        .cta-buttons {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        
-        .btn {
-            padding: 12px 24px;
-            border-radius: 6px;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            border: none;
-            transition: all 0.3s;
-            font-size: 16px;
-        }
-        
-        .btn-primary {
-            background: var(--primary);
-            color: var(--background);
-        }
-        
-        .btn-primary:hover {
-            background: var(--primary-dark);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 255, 136, 0.4);
-        }
-        
-        .btn-secondary {
-            background: transparent;
-            color: var(--primary);
-            border: 2px solid var(--primary);
-        }
-        
-        .btn-secondary:hover {
-            background: rgba(0, 255, 136, 0.1);
-            transform: translateY(-2px);
-        }
-        
-        /* Problem/Solution */
-        .comparison {
-            max-width: 1000px;
-            margin: 80px auto;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            padding: 0 20px;
-        }
-        
-        .comparison-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 40px 30px;
-            text-align: center;
-        }
-        
-        .comparison-card.generic {
-            border-color: #ff6666;
-            opacity: 0.7;
-        }
-        
-        .comparison-card.smart {
-            border-color: var(--primary);
-            background: rgba(0, 255, 136, 0.05);
-        }
-        
-        .comparison-card h3 {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        
-        .comparison-card p {
-            color: var(--text-muted);
-            line-height: 1.8;
-        }
-        
-        /* Features */
-        .features {
-            max-width: 1200px;
-            margin: 80px auto;
-            padding: 0 20px;
-        }
-        
-        .features h2 {
-            font-size: 36px;
-            text-align: center;
-            margin-bottom: 60px;
-            color: var(--primary);
-        }
-        
+
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
         }
-        
+
         .feature-card {
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 8px;
-            padding: 30px;
+            padding: 20px;
             transition: all 0.3s;
         }
-        
+
         .feature-card:hover {
             border-color: var(--primary);
-            transform: translateY(-4px);
-            box-shadow: 0 12px 30px rgba(0, 255, 136, 0.2);
+            box-shadow: 0 8px 20px rgba(0, 255, 136, 0.1);
         }
-        
-        .feature-icon {
-            font-size: 40px;
-            margin-bottom: 15px;
-        }
-        
+
         .feature-card h3 {
-            font-size: 20px;
-            margin-bottom: 12px;
             color: var(--primary);
+            margin-bottom: 10px;
+            font-size: 16px;
         }
-        
+
         .feature-card p {
+            font-size: 13px;
             color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* Chat Tab */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            gap: 0;
+        }
+
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: rgba(10, 10, 10, 0.5);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            min-height: 400px;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 15px;
+            gap: 10px;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: rgba(0, 136, 255, 0.2);
+            border-left: 3px solid var(--secondary);
+        }
+
+        .message.assistant .message-content {
+            background: rgba(0, 255, 136, 0.1);
+            border-left: 3px solid var(--primary);
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-area input {
+            flex: 1;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-family: inherit;
             font-size: 14px;
         }
-        
-        /* Stats */
-        .stats {
+
+        .input-area input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.1);
+        }
+
+        .input-area button {
+            padding: 12px 24px;
+            background: var(--primary);
+            color: var(--background);
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .input-area button:hover {
+            background: var(--primary-dark);
+        }
+
+        .status {
+            font-size: 12px;
+            padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .status.connected {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Dashboard Tab */
+        .dashboard-content {
             max-width: 1200px;
-            margin: 80px auto;
-            padding: 60px 20px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 8px;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 40px;
+            padding: 20px;
             text-align: center;
         }
-        
-        .stat {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        
+
         .stat-value {
-            font-size: 36px;
+            font-size: 32px;
             font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .info-box {
+            background: rgba(0, 255, 136, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-box h3 {
             color: var(--primary);
             margin-bottom: 10px;
         }
-        
-        .stat-label {
-            color: var(--text-muted);
+
+        .info-box p {
             font-size: 14px;
-        }
-        
-        /* Tech Stack */
-        .tech-stack {
-            max-width: 1000px;
-            margin: 80px auto;
-            padding: 0 20px;
-            text-align: center;
-        }
-        
-        .tech-stack h2 {
-            font-size: 32px;
-            color: var(--primary);
-            margin-bottom: 40px;
-        }
-        
-        .tech-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            justify-content: center;
-        }
-        
-        .tech-badge {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 10px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--primary);
-        }
-        
-        /* Footer */
-        footer {
-            border-top: 1px solid var(--border);
-            padding: 40px;
-            text-align: center;
             color: var(--text-muted);
-            margin-top: 80px;
+            line-height: 1.6;
         }
-        
-        footer a {
-            color: var(--primary);
-            text-decoration: none;
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
         }
-        
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 36px;
-            }
-            
-            .comparison {
-                grid-template-columns: 1fr;
-            }
-            
-            .cta-buttons {
-                flex-direction: column;
-            }
-            
-            nav ul {
-                gap: 15px;
-                font-size: 14px;
-            }
+
+        ::-webkit-scrollbar-track {
+            background: var(--background);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
         }
     </style>
 </head>
 <body>
     <!-- Navigation -->
     <nav>
-        <div class="logo">⬢ AEGIS1</div>
+        <div class="logo">AEGIS1</div>
         <ul>
-            <li><a href="index.html" class="active">Home</a></li>
-            <li><a href="modern-dashboard.html">Dashboard</a></li>
-            <li><a href="chat.html">Chat</a></li>
-            <li><a href="architecture.html">Architecture</a></li>
+            <li><button class="nav-btn active" data-tab="home">Home</button></li>
+            <li><button class="nav-btn" data-tab="chat">Chat</button></li>
+            <li><button class="nav-btn" data-tab="dashboard">Dashboard</button></li>
         </ul>
     </nav>
-    
-    <!-- Hero -->
-    <section class="hero">
-        <h1>Body-Aware AI Assistant</h1>
-        <p class="tagline">
-            Unlike generic AI, AEGIS1 understands your personal health and wealth data.
-            Get personalized advice that actually knows who you are.
-        </p>
-        <div class="cta-buttons">
-            <a href="chat.html" class="btn btn-primary">Try Chat Now</a>
-            <a href="modern-dashboard.html" class="btn btn-secondary">View Dashboard</a>
+
+    <!-- Tabs Container -->
+    <div class="tabs-container">
+        <!-- Home Tab -->
+        <div id="home" class="tab active">
+            <div class="home-content">
+                <div class="hero">
+                    <h1>AEGIS1 AI Assistant</h1>
+                    <p>Your personal health and wealth advisor powered by Claude Opus</p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <h3>Health Tracking</h3>
+                        <p>Monitor sleep, exercise, mood, and heart rate. Get personalized insights about your wellness patterns.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Wealth Management</h3>
+                        <p>Track expenses by category, monitor budgets, and understand your spending patterns.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Smart Analysis</h3>
+                        <p>Claude Opus analyzes your data to find correlations between health and spending habits.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Real-Time Response</h3>
+                        <p>Haiku for quick answers. Opus for deep analysis. Always choosing the right tool.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Voice First</h3>
+                        <p>Interact via ESP32 voice pendant or web chat. Natural conversation at your fingertips.</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>Extended Thinking</h3>
+                        <p>Claude thinks through complex questions about your health and financial goals.</p>
+                    </div>
+                </div>
+            </div>
         </div>
-    </section>
-    
-    <!-- Problem/Solution -->
-    <div class="comparison">
-        <div class="comparison-card generic">
-            <h3>❌ Generic AI</h3>
-            <p>"Get 8 hours of sleep"</p>
-            <p style="margin-top: 20px; font-size: 12px;">One-size-fits-all advice that ignores who you are.</p>
+
+        <!-- Chat Tab -->
+        <div id="chat" class="tab">
+            <div class="chat-container">
+                <div class="status connected" id="status">Connected</div>
+                <div class="messages-area" id="messagesArea">
+                    <div class="message assistant">
+                        <div class="message-content">
+                            Hello! I'm AEGIS1, your AI health and wealth assistant. Ask me about your sleep, spending, fitness goals, or anything else. What would you like to know?
+                        </div>
+                    </div>
+                </div>
+                <div class="input-area">
+                    <input type="text" id="userInput" placeholder="Ask me anything..." />
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
         </div>
-        <div class="comparison-card smart">
-            <h3>✅ AEGIS1</h3>
-            <p>"You averaged 6h weekdays vs 7.9h weekends — that 2h deficit explains your weekday fatigue"</p>
-            <p style="margin-top: 20px; font-size: 12px;">Personalized analysis of YOUR patterns and YOUR goals.</p>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab">
+            <div class="dashboard-content">
+                <h2 style="margin-bottom: 30px;">Your Health & Wealth Summary</h2>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">6.8h</div>
+                        <div class="stat-label">Avg Sleep (7 days)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">8,234</div>
+                        <div class="stat-label">Avg Steps</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">$1,240</div>
+                        <div class="stat-label">Monthly Spending</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">78%</div>
+                        <div class="stat-label">Budget Remaining</div>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <h3>Key Insights</h3>
+                    <p>You average 6 hours of sleep on weekdays but 7.9 hours on weekends. This 2-hour gap explains your weekday fatigue. Your coffee spending increases 34% when you sleep less than 6 hours.</p>
+                </div>
+
+                <div class="info-box">
+                    <h3>Recent Activity</h3>
+                    <p>Last 7 days: 3 gym sessions, 47k steps, average mood 7.2/10. Spending down 12% from last week. Keep up the momentum!</p>
+                </div>
+            </div>
         </div>
     </div>
-    
-    <!-- Features -->
-    <section class="features">
-        <h2>⚡ Key Features</h2>
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">💭</div>
-                <h3>Extended Thinking</h3>
-                <p>Claude Opus 4.6 uses advanced reasoning to correlate your health and spending patterns for deeper insights.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">⚡</div>
-                <h3>Instant Response</h3>
-                <p>Haiku model for fast queries (<200ms). Opus for deep analysis. Smart routing chooses the right tool.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📊</div>
-                <h3>Health Tracking</h3>
-                <p>Sleep, steps, mood, heart rate, exercise. Automatic pattern detection and trend analysis.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💰</div>
-                <h3>Wealth Management</h3>
-                <p>Expense tracking by category. Budget monitoring. Spending pattern correlation with health.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🎯</div>
-                <h3>Goal Planning</h3>
-                <p>Autonomous background tasks. Reminders, recurring actions, and achievement tracking.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">🔄</div>
-                <h3>Real-Time Updates</h3>
-                <p>WebSocket streaming. See AI thinking in real-time. Live task execution monitoring.</p>
-            </div>
-        </div>
-    </section>
-    
-    <!-- Stats -->
-    <section class="stats">
-        <div class="stat">
-            <div class="stat-value">10</div>
-            <div class="stat-label">Claude Tools</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value">7 days</div>
-            <div class="stat-label">Demo Data</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value"><200ms</div>
-            <div class="stat-label">Avg Latency</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value">0</div>
-            <div class="stat-label">Build Tools</div>
-        </div>
-    </section>
-    
-    <!-- Tech Stack -->
-    <section class="tech-stack">
-        <h2>🔧 Built With</h2>
-        <div class="tech-badges">
-            <span class="tech-badge">Claude Opus 4.6</span>
-            <span class="tech-badge">Claude Haiku 4.5</span>
-            <span class="tech-badge">FastAPI</span>
-            <span class="tech-badge">SQLite</span>
-            <span class="tech-badge">WebSocket</span>
-            <span class="tech-badge">Python 3.10+</span>
-            <span class="tech-badge">Extended Thinking</span>
-            <span class="tech-badge">Parallel Agents</span>
-        </div>
-    </section>
-    
-    <!-- Footer -->
-    <footer>
-        <p>AEGIS1 — Anthropic Claude Code Hackathon 2026</p>
-        <p style="margin-top: 10px; font-size: 12px;">
-            <a href="https://github.com/Aegis-ai-labs/Aegis">View on GitHub</a> •
-            <a href="chat.html">Start Chatting</a> •
-            <a href="modern-dashboard.html">Dashboard</a>
-        </p>
-    </footer>
+
+    <script>
+        // Tab Navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tabName = e.target.dataset.tab;
+
+                // Hide all tabs
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+
+                // Show selected tab
+                document.getElementById(tabName).classList.add('active');
+                e.target.classList.add('active');
+            });
+        });
+
+        // Chat WebSocket
+        const messagesArea = document.getElementById('messagesArea');
+        const userInput = document.getElementById('userInput');
+        const statusEl = document.getElementById('status');
+        let ws = null;
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const url = `${protocol}://${window.location.host}/ws/text`;
+
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                statusEl.textContent = 'Connected';
+                statusEl.classList.add('connected');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.text) {
+                        addMessage(data.text, 'assistant');
+                    }
+                } catch (e) {
+                    console.error('Error parsing message:', e);
+                }
+            };
+
+            ws.onerror = () => {
+                statusEl.textContent = 'Error';
+                statusEl.classList.remove('connected');
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected';
+                statusEl.classList.remove('connected');
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            addMessage(text, 'user');
+            userInput.value = '';
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ text: text }));
+            }
+        }
+
+        function addMessage(text, role) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+            msgDiv.innerHTML = `<div class="message-content">${text}</div>`;
+            messagesArea.appendChild(msgDiv);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Connect WebSocket when page loads
+        connectWebSocket();
+    </script>
 </body>
 </html>
