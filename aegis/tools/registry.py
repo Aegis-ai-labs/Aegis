@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-from . import health, wealth
+from . import health, wealth, tasks
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,76 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "name": "create_background_task",
+        "description": "Create a background task that will be executed autonomously. Use for reminders, recurring actions, scheduled events, or long-running operations.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Short title for the task",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Detailed description of what the task should accomplish",
+                },
+                "priority": {
+                    "type": "integer",
+                    "description": "Priority level (0-10, higher = more urgent)",
+                    "default": 0,
+                },
+                "task_type": {
+                    "type": "string",
+                    "enum": ["oneshot", "recurring", "scheduled"],
+                    "description": "Type of task execution",
+                    "default": "oneshot",
+                },
+                "schedule": {
+                    "type": "object",
+                    "description": "Schedule configuration for recurring/scheduled tasks",
+                    "properties": {
+                        "type": {"type": "string"},
+                        "time": {"type": "string"},
+                    },
+                },
+            },
+            "required": ["title", "description"],
+        },
+    },
+    {
+        "name": "get_task_status",
+        "description": "Check the status of a background task",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "Task ID to check",
+                },
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "list_all_tasks",
+        "description": "List all tasks, optionally filtered by status",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "failed"],
+                    "description": "Filter by status",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of tasks to return",
+                    "default": 20,
+                },
+            },
+        },
+    },
 ]
 
 # Map tool names to async handler functions
@@ -110,6 +180,9 @@ _HANDLERS: dict[str, Any] = {
     "get_spending_today": wealth.get_spending_today,
     "get_spending_summary": wealth.get_spending_summary,
     "get_budget_status": wealth.get_budget_status,
+    "create_background_task": tasks.create_background_task,
+    "get_task_status": tasks.get_task_status,
+    "list_all_tasks": tasks.list_all_tasks,
 }
 
 async def dispatch_tool(tool_name: str, tool_input: dict) -> str:

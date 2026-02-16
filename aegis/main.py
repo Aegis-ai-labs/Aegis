@@ -6,10 +6,13 @@ Handles:
 - Health check endpoint
 """
 
+import asyncio
 import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
@@ -17,6 +20,7 @@ from fastapi.responses import JSONResponse
 from .claude_client import ClaudeClient
 from .config import settings
 from .db import ensure_db, close_db
+from .executor import TaskExecutor
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -24,16 +28,32 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# Global executor instance
+executor: Optional[TaskExecutor] = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown: initialize DB, seed demo data if needed."""
+    """Startup/shutdown: initialize DB, seed demo data, start executor."""
+    global executor
+
     log.info(f"AEGIS1 Bridge starting on {settings.bridge_host}:{settings.bridge_port}")
     ensure_db()  # Initialize DB tables + seed demo data
-    log.info("Database initialized")
+    log.info("✓ Database initialized")
+
+    # Initialize and start executor
+    executor = TaskExecutor()
+    executor_task = asyncio.create_task(executor.start())
+    log.info("✓ TaskExecutor started in background")
+
     yield
+
+    # Stop executor
+    if executor:
+        await executor.stop()
+
     await close_db()
-    log.info("AEGIS1 Bridge shut down")
+    log.info("✓ AEGIS1 Bridge shut down")
 
 
 app = FastAPI(title="AEGIS1 Bridge", lifespan=lifespan)
@@ -133,6 +153,47 @@ async def audio_ws(websocket: WebSocket):
 
     except WebSocketDisconnect:
         log.info("Audio WebSocket disconnected")
+
+
+@app.websocket("/ws/tasks")
+async def tasks_ws(websocket: WebSocket):
+    """WebSocket endpoint for task status updates.
+
+    Broadcasts task status changes to connected clients.
+
+    Protocol:
+    - Server sends JSON: {"type": "task_update", "pending": [...], "in_progress": [...], "timestamp": "..."}
+    - Updates sent every 5 seconds
+    """
+    await websocket.accept()
+    log.info("Task monitoring WebSocket connected")
+
+    from .task_manager import TaskManager
+
+    manager = TaskManager()
+
+    try:
+        while True:
+            # Send task updates every 5 seconds
+            await asyncio.sleep(5)
+
+            # Get all active tasks
+            pending = await manager.list_tasks(status="pending", limit=10)
+            in_progress = await manager.list_tasks(status="in_progress", limit=10)
+            completed = await manager.list_tasks(status="completed", limit=5)
+
+            update = {
+                "type": "task_update",
+                "pending": pending,
+                "in_progress": in_progress,
+                "completed": completed,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+            await websocket.send_json(update)
+
+    except WebSocketDisconnect:
+        log.info("Task monitoring WebSocket disconnected")
 
 
 def main():

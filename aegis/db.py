@@ -65,9 +65,27 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            priority INTEGER DEFAULT 0,
+            task_type TEXT DEFAULT 'oneshot',
+            schedule TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed_at DATETIME,
+            result TEXT,
+            error TEXT,
+            metadata TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_health_metric ON health_logs(metric, timestamp);
         CREATE INDEX IF NOT EXISTS idx_expense_cat ON expenses(category, timestamp);
         CREATE INDEX IF NOT EXISTS idx_insights_created ON user_insights(created_at);
+        CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(status, priority);
+        CREATE INDEX IF NOT EXISTS idx_task_type ON tasks(task_type, status);
     """)
     conn.commit()
 
