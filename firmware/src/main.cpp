@@ -115,6 +115,7 @@ void websocket_event(WStype_t type, uint8_t *payload, size_t length) {
             digitalWrite(LED_PIN, LOW);
             break;
         case WStype_ERROR:
+            Serial.printf("[ERROR] WebSocket error: payload=%.*s\n", (int)length, payload ? (char*)payload : "(null)");
             cloud_connected = false;
             digitalWrite(LED_PIN, LOW);
             break;
@@ -151,6 +152,7 @@ void setup() {
     Serial.println();
     Serial.printf("[OK] WiFi %s\n", WiFi.localIP().toString().c_str());
 
+    Serial.printf("[...] Connecting to bridge: ws://%s:%d/ws/audio\n", BRIDGE_HOST, BRIDGE_PORT);
     webSocket.begin(BRIDGE_HOST, BRIDGE_PORT, "/ws/audio");
     webSocket.onEvent(websocket_event);
     webSocket.setReconnectInterval(5000);

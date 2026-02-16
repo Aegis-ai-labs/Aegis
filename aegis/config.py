@@ -19,18 +19,26 @@ class Settings(BaseSettings):
 
     # Audio
     sample_rate: int = 16000
+    channels: int = 1  # Mono
     chunk_size_ms: int = 200
+    chunk_size_bytes: int = 320  # 10ms @ 16kHz 16-bit mono
     max_recording_time_ms: int = 10000
+    silence_threshold: int = 500  # RMS amplitude threshold for silence detection
+    silence_duration_ms: float = 600  # Duration of silence to trigger utterance completion
 
-    # STT — Moonshine Streaming Tiny primary, faster-whisper fallback
-    stt_engine: str = "moonshine"  # "moonshine" | "faster-whisper"
-    stt_model: str = "moonshine/tiny"  # moonshine: tiny|base; faster-whisper: tiny|base|small
-    stt_language: str = "en"
+    # STT — faster-whisper (optimized for speed)
+    stt_engine: str = "faster-whisper"  # Engine to use
+    stt_model: str = "tiny"  # tiny|base|small (tiny = fastest, smallest)
+    stt_device: str = "cpu"  # "cpu" | "cuda" | "mps"
+    stt_beam_size: int = 1  # 1 = fastest, 5 = most accurate
+    stt_language: str = "en"  # Language code
 
     # TTS — Kokoro primary, Piper fallback
-    tts_engine: str = "kokoro"  # "kokoro" | "piper"
+    tts_engine: str = "piper"  # "kokoro" | "piper" (using piper for stability)
     tts_kokoro_voice: str = "af_heart"  # Kokoro voice name
     tts_piper_model: str = "en_US-lessac-medium"  # Piper fallback model
+    piper_model_path: str = ""  # Path to Piper ONNX model (auto-downloaded)
+    piper_config_path: str = ""  # Path to Piper config JSON (auto-downloaded)
 
     # VAD — Silero
     vad_threshold: float = 0.5  # Speech probability threshold

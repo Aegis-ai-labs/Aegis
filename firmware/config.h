@@ -10,7 +10,7 @@
 // ================================================================
 // AEGIS1 Bridge Server Configuration
 // ================================================================
-#define BRIDGE_HOST "10.100.110.206"  // Your Mac/laptop IP (run: ifconfig | grep "inet " | grep -v 127.0.0.1)
+#define BRIDGE_HOST "10.18.196.206"  // Your Mac/laptop IP (run: ifconfig | grep "inet " | grep -v 127.0.0.1)
 #define BRIDGE_PORT 8000
 
 // ================================================================

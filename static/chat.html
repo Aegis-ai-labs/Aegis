@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEGIS1 Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #00ff88;
+            --primary-dark: #00cc6a;
+            --secondary: #0088ff;
+            --background: #0a0a0a;
+            --surface: #1a1a1a;
+            --border: #2a2a2a;
+            --text: #e0e0e0;
+            --text-muted: #888;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff0088;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--background);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Navigation */
+        nav {
+            background: rgba(26, 26, 26, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 2px;
+        }
+        
+        nav ul {
+            display: flex;
+            gap: 20px;
+            list-style: none;
+        }
+        
+        nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s;
+        }
+        
+        nav a:hover, nav a.active {
+            color: var(--primary);
+        }
+        
+        /* Status */
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            padding: 8px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+        }
+        
+        .status.connected {
+            border-color: var(--primary);
+        }
+        
+        .status.disconnected {
+            border-color: var(--danger);
+        }
+        
+        .indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .indicator.active {
+            background: var(--primary);
+            animation: pulse 2s infinite;
+        }
+        
+        .indicator.inactive {
+            background: var(--danger);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Main Layout */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .prompt-chip {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 13px;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .prompt-chip:hover {
+            background: rgba(0, 255, 136, 0.2);
+            transform: translateX(4px);
+        }
+        
+        /* Main Chat */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            flex-direction: row-reverse;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            line-height: 1.5;
+        }
+        
+        .message.user .message-content {
+            background: rgba(0, 136, 255, 0.2);
+            border-left: 3px solid var(--secondary);
+        }
+        
+        .message.assistant .message-content {
+            background: rgba(0, 255, 136, 0.1);
+            border-left: 3px solid var(--primary);
+        }
+        
+        .message-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        
+        .badge-haiku {
+            background: rgba(0, 136, 255, 0.2);
+            color: var(--secondary);
+        }
+        
+        .badge-opus {
+            background: rgba(255, 0, 136, 0.2);
+            color: #ff0088;
+        }
+        
+        .badge-thinking {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--warning);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            align-items: flex-end;
+            height: 20px;
+        }
+        
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+            40% { opacity: 1; transform: translateY(-8px); }
+        }
+        
+        /* Input Area */
+        .input-area {
+            border-top: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        input {
+            flex: 1;
+            background: var(--background);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: var(--primary);
+            color: var(--background);
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+            
+            .message-content {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="logo">⬢ AEGIS1</div>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="modern-dashboard.html">Dashboard</a></li>
+            <li><a href="chat.html" class="active">Chat</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+        </ul>
+        <div class="status disconnected" id="status">
+            <span class="indicator inactive"></span>
+            <span>Connecting...</span>
+        </div>
+    </nav>
+    
+    <!-- Chat Container -->
+    <div class="chat-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-title">Try These</div>
+            <div class="prompt-chip" onclick="sendPrompt('How did I sleep this week?')">
+                How did I sleep this week?
+            </div>
+            <div class="prompt-chip" onclick="sendPrompt('What\'s my spending breakdown?')">
+                What's my spending breakdown?
+            </div>
+            <div class="prompt-chip" onclick="sendPrompt('Help me plan a 5K training')">
+                Help me plan a 5K training
+            </div>
+            <div class="prompt-chip" onclick="sendPrompt('Is my budget on track?')">
+                Is my budget on track?
+            </div>
+            <div class="prompt-chip" onclick="sendPrompt('Why am I tired on weekdays?')">
+                Why am I tired on weekdays?
+            </div>
+            <div class="prompt-chip" onclick="sendPrompt('Analyze my spending patterns')">
+                Analyze my spending patterns
+            </div>
+        </div>
+        
+        <!-- Main Chat -->
+        <div class="main">
+            <div class="messages-area" id="messagesArea">
+                <div class="message assistant">
+                    <div>
+                        <div class="message-content">
+                            👋 Hello! I'm AEGIS1, your personal AI health and wealth assistant. Ask me anything about your sleep, spending, fitness, or financial goals.
+                        </div>
+                        <div class="message-meta">
+                            <span>Ready to help</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" id="userInput" placeholder="Ask me about your health or finances..." />
+                <button onclick="sendMessage()" id="sendBtn">Send</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const messagesArea = document.getElementById('messagesArea');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusEl = document.getElementById('status');
+        let ws = null;
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const url = `${protocol}://${window.location.host}/ws/text`;
+            
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                console.log('Connected');
+                statusEl.classList.remove('disconnected');
+                statusEl.classList.add('connected');
+                statusEl.innerHTML = '<span class="indicator active"></span><span>Connected</span>';
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+            
+            ws.onerror = () => {
+                statusEl.classList.add('disconnected');
+                statusEl.classList.remove('connected');
+                statusEl.innerHTML = '<span class="indicator inactive"></span><span>Error</span>';
+            };
+            
+            ws.onclose = () => {
+                statusEl.classList.add('disconnected');
+                statusEl.classList.remove('connected');
+                statusEl.innerHTML = '<span class="indicator inactive"></span><span>Disconnected</span>';
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+        
+        function handleMessage(data) {
+            if (data.type === 'user_message') {
+                addMessage(data.text, 'user');
+            } else if (data.type === 'assistant_message') {
+                const modelBadge = data.model ? 
+                    `<span class="badge ${data.model.includes('haiku') ? 'badge-haiku' : 'badge-opus'}">${data.model.includes('haiku') ? 'Haiku' : 'Opus'}</span>` : '';
+                const latency = data.latency_ms ? 
+                    `<span class="badge">${Math.round(data.latency_ms)}ms</span>` : '';
+                
+                addMessage(data.text, 'assistant', modelBadge + latency);
+            } else if (data.type === 'thinking') {
+                addMessage('💭 Thinking...', 'assistant', '<span class="badge badge-thinking">Extended Thinking</span>');
+            }
+        }
+        
+        function addMessage(text, role, meta = '') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.innerHTML = `
+                <div class="message-content">${escapeHtml(text)}</div>
+                <div class="message-meta">${meta}</div>
+            `;
+            
+            messageDiv.appendChild(contentDiv);
+            messagesArea.appendChild(messageDiv);
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+            
+            userInput.value = '';
+            addMessage(text, 'user');
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ text }));
+            }
+        }
+        
+        function sendPrompt(text) {
+            userInput.value = text;
+            sendMessage();
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Connect on load
+        connectWebSocket();
+    </script>
+</body>
+</html>

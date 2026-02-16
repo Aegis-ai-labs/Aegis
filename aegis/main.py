@@ -17,10 +17,14 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
+from .audio_buffer import AudioBuffer
 from .claude_client import ClaudeClient
 from .config import settings
 from .db import ensure_db, close_db
 from .executor import TaskExecutor
+from .stt import transcribe_wav
+from .tts import TTSEngine
+from .audio import pcm_to_wav
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -116,15 +120,18 @@ async def text_ws(websocket: WebSocket):
 async def audio_ws(websocket: WebSocket):
     """Audio WebSocket for ESP32 pendant.
 
-    Protocol (Phase 2 — currently returns text-only):
-    - Client sends binary: raw PCM or ADPCM audio chunks
-    - Server sends binary: PCM/ADPCM audio response chunks
+    Protocol (Phase 2 — Full STT/TTS pipeline):
+    - Client sends binary: raw PCM audio chunks (16kHz, 16-bit mono, 320 bytes = 10ms)
+    - Server sends binary: PCM audio response chunks back to ESP32
     - Control messages via JSON text frames
     """
     await websocket.accept()
     client = ClaudeClient()
-    log.info("Audio WebSocket connected")
-
+    audio_buffer = AudioBuffer()
+    tts_engine = TTSEngine()
+    
+    log.info("Audio WebSocket connected (STT/TTS pipeline active)")
+    
     try:
         while True:
             data = await websocket.receive()
@@ -138,21 +145,84 @@ async def audio_ws(websocket: WebSocket):
 
                 if msg.get("type") == "reset":
                     await client.reset()
+                    audio_buffer._reset()
                     await websocket.send_json({"type": "reset_ack"})
+                    log.info("Audio session reset")
                 elif msg.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
 
             elif "bytes" in data:
-                # Audio data — Phase 2 will add STT/TTS pipeline here.
-                # For now, just acknowledge receipt.
-                log.debug(f"Received {len(data['bytes'])} bytes of audio")
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Audio pipeline not yet implemented. Use /ws/text for testing.",
-                })
+                # Audio chunk from ESP32 microphone
+                chunk = data["bytes"]
+                log.debug(f"Received {len(chunk)} bytes of audio")
+                
+                # Accumulate chunk into buffer
+                is_complete, audio_pcm = audio_buffer.add_chunk(chunk)
+                
+                if is_complete and audio_pcm:
+                    # Speech detected, run STT
+                    log.info(f"Processing {len(audio_pcm)} bytes through STT...")
+                    t0 = time.monotonic()
+                    
+                    # Convert PCM to WAV for transcription
+                    audio_wav = pcm_to_wav(audio_pcm)
+                    
+                    # Run STT (faster-whisper)
+                    user_text = transcribe_wav(audio_wav)
+                    
+                    if not user_text:
+                        log.warning("STT returned empty text")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Could not transcribe audio"
+                        })
+                        continue
+                    
+                    log.info(f"STT [user]: {user_text}")
+                    
+                    # Get Claude response (with health context)
+                    log.debug("Querying Claude...")
+                    response_text = ""
+                    async for chunk_text in client.chat(user_text):
+                        response_text += chunk_text
+                    
+                    elapsed = time.monotonic() - t0
+                    log.info(f"Claude response: {response_text[:100]}... ({elapsed:.2f}s)")
+                    
+                    # Run TTS on response
+                    log.debug("Synthesizing TTS...")
+                    pcm_chunks = tts_engine.synthesize_sentences(response_text)
+                    
+                    if pcm_chunks:
+                        # Stream TTS output back to ESP32 in 320-byte chunks
+                        for pcm_sentence in pcm_chunks:
+                            for i in range(0, len(pcm_sentence), 320):
+                                chunk_to_send = pcm_sentence[i:i+320]
+                                # Pad last chunk if needed
+                                if len(chunk_to_send) < 320:
+                                    chunk_to_send += b'\x00' * (320 - len(chunk_to_send))
+                                await websocket.send_bytes(chunk_to_send)
+                                await asyncio.sleep(0.005)  # Rate limit streaming
+                        
+                        log.info(f"TTS streamed {len(response_text)} chars in {len(pcm_chunks)} chunks")
+                    else:
+                        log.warning("TTS returned no audio")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Could not synthesize response"
+                        })
 
     except WebSocketDisconnect:
         log.info("Audio WebSocket disconnected")
+    except Exception as e:
+        log.error(f"Audio WebSocket error: {e}", exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": f"Server error: {str(e)}"
+            })
+        except Exception:
+            pass
 
 
 @app.websocket("/ws/tasks")

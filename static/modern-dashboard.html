@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEGIS1 Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --primary: #00ff88;
+            --primary-dark: #00cc6a;
+            --secondary: #0088ff;
+            --background: #0a0a0a;
+            --surface: #1a1a1a;
+            --border: #2a2a2a;
+            --text: #e0e0e0;
+            --text-muted: #888;
+            --success: #00ff88;
+            --warning: #ffaa00;
+            --danger: #ff0088;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--background);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Navigation */
+        nav {
+            background: rgba(26, 26, 26, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 15px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        nav .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 2px;
+        }
+        
+        nav ul {
+            display: flex;
+            gap: 30px;
+            list-style: none;
+        }
+        
+        nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.3s;
+            font-weight: 500;
+        }
+        
+        nav a:hover, nav a.active {
+            color: var(--primary);
+        }
+        
+        /* Header */
+        .header {
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: var(--primary);
+        }
+        
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+        
+        /* Status Indicator */
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status.connected {
+            border-color: var(--primary);
+        }
+        
+        .status.disconnected {
+            border-color: var(--danger);
+        }
+        
+        .indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .indicator.active {
+            background: var(--primary);
+            animation: pulse 2s infinite;
+        }
+        
+        .indicator.inactive {
+            background: var(--danger);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Grid Layouts */
+        .grid {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        }
+        
+        .grid-3 {
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+        
+        .grid-4 {
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        
+        .card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+        
+        .card-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        
+        /* Stats */
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .stat:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 16px;
+        }
+        
+        .stat-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        /* Messages */
+        .messages {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            line-height: 1.5;
+        }
+        
+        .message.user {
+            background: rgba(0, 136, 255, 0.1);
+            border-left: 3px solid var(--secondary);
+            margin-left: 20px;
+        }
+        
+        .message.assistant {
+            background: rgba(0, 255, 136, 0.1);
+            border-left: 3px solid var(--primary);
+            margin-right: 20px;
+        }
+        
+        .message-time {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }
+        
+        /* Input Area */
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        input, textarea {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+        }
+        
+        input[type="text"], textarea {
+            flex: 1;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: var(--background);
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+        }
+        
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #0066cc;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        
+        .badge-haiku {
+            background: rgba(0, 136, 255, 0.2);
+            color: var(--secondary);
+        }
+        
+        .badge-opus {
+            background: rgba(255, 0, 136, 0.2);
+            color: #ff0088;
+        }
+        
+        .badge-thinking {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--warning);
+            animation: pulse 1.5s infinite;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+            
+            nav ul {
+                gap: 15px;
+                font-size: 14px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .status {
+                top: 10px;
+                right: 10px;
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="container">
+            <div class="logo">⬢ AEGIS1</div>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="dashboard.html" class="active">Dashboard</a></li>
+                <li><a href="chat.html">Chat</a></li>
+                <li><a href="architecture.html">Architecture</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <!-- Status -->
+    <div class="status disconnected">
+        <span class="indicator inactive"></span>
+        <span>Connecting...</span>
+    </div>
+    
+    <!-- Header -->
+    <div class="container">
+        <div class="header">
+            <h1>Health & Wealth Dashboard</h1>
+            <p class="subtitle">Personalized insights powered by Claude Opus 4.6</p>
+        </div>
+        
+        <!-- Summary Stats -->
+        <div class="grid grid-4">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">😴</div>
+                        <div class="card-subtitle">Avg Sleep</div>
+                    </div>
+                </div>
+                <div class="stat-value">7.2h</div>
+                <div class="stat-badge">↑ +0.5h vs last week</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">👟</div>
+                        <div class="card-subtitle">Avg Steps</div>
+                    </div>
+                </div>
+                <div class="stat-value">6,847</div>
+                <div class="stat-badge">↑ +450 steps</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">💰</div>
+                        <div class="card-subtitle">Monthly Budget</div>
+                    </div>
+                </div>
+                <div class="stat-value">$1,245</div>
+                <div class="stat-badge">↓ $1,755 left</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">✅</div>
+                        <div class="card-subtitle">Tasks</div>
+                    </div>
+                </div>
+                <div class="stat-value">12</div>
+                <div class="stat-badge">5 pending</div>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="grid grid-2">
+            <!-- Sleep & Mood Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📊 7-Day Sleep Pattern</div>
+                    <span class="badge badge-haiku">Real Data</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="sleepChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Spending Breakdown -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💳 Spending by Category</div>
+                    <span class="badge badge-opus">Analyzed</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="spendingChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Detailed Stats -->
+        <div class="grid grid-2">
+            <!-- Health Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">❤️ Health Metrics</div>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Average Sleep</span>
+                    <span class="stat-value">7.2 hours</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Average Steps</span>
+                    <span class="stat-value">6,847</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Resting HR</span>
+                    <span class="stat-value">72 bpm</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Exercise</span>
+                    <span class="stat-value">32 min/day</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Water Intake</span>
+                    <span class="stat-value">7.1 glasses/day</span>
+                </div>
+            </div>
+            
+            <!-- Spending Summary -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💵 Spending Summary</div>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Food & Dining</span>
+                    <span class="stat-value">$345</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Transport</span>
+                    <span class="stat-value">$82</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Shopping</span>
+                    <span class="stat-value">$201</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Entertainment</span>
+                    <span class="stat-value">$124</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Health & Fitness</span>
+                    <span class="stat-value">$43</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tasks -->
+        <div class="card" style="margin-top: 20px;">
+            <div class="card-header">
+                <div class="card-title">✅ Background Tasks</div>
+                <span class="badge badge-thinking">Active</span>
+            </div>
+            <div>
+                <div class="stat">
+                    <span class="stat-label">📧 Send weekly health summary email</span>
+                    <span class="stat-badge">Scheduled Daily</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📊 Analyze spending trends</span>
+                    <span class="stat-badge">Completed</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">🎯 Suggest new health goals</span>
+                    <span class="stat-badge">In Progress</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Charts data
+        const sleepData = {
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            datasets: [{
+                label: 'Sleep Hours',
+                data: [6.0, 5.8, 6.2, 6.1, 7.5, 8.2, 7.9],
+                borderColor: '#00ff88',
+                backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                tension: 0.4,
+                fill: true,
+                pointRadius: 4,
+                pointBackgroundColor: '#00ff88',
+            }]
+        };
+        
+        const spendingData = {
+            labels: ['Food', 'Transport', 'Shopping', 'Entertainment', 'Health'],
+            datasets: [{
+                data: [345, 82, 201, 124, 43],
+                backgroundColor: [
+                    '#ff0088',
+                    '#0088ff',
+                    '#00ff88',
+                    '#ffaa00',
+                    '#ff6600'
+                ],
+                borderColor: '#1a1a1a',
+                borderWidth: 2
+            }]
+        };
+        
+        // Render charts
+        const sleepCtx = document.getElementById('sleepChart');
+        if (sleepCtx) {
+            new Chart(sleepCtx, {
+                type: 'line',
+                data: sleepData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            ticks: { color: '#888' },
+                            grid: { color: '#2a2a2a' }
+                        },
+                        x: {
+                            ticks: { color: '#888' },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+        
+        const spendingCtx = document.getElementById('spendingChart');
+        if (spendingCtx) {
+            new Chart(spendingCtx, {
+                type: 'doughnut',
+                data: spendingData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#888' } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

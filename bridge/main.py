@@ -232,15 +232,37 @@ async def audio_websocket(websocket: WebSocket):
                     silence_counter = SILENCE_CHUNKS_TO_STOP
 
                 # End of speech detected
+                # Require: silence detected + minimum recording length + actual speech content (not just ambient noise)
                 if silence_counter >= SILENCE_CHUNKS_TO_STOP and len(audio_buffer) > 3200:
-                    logger.info("End of speech: %d bytes, %d ms", len(audio_buffer), int(elapsed_ms))
+                    # Check if there was actual speech (not just silence/ambient noise)
+                    from bridge.audio import calculate_rms
+                    rms = calculate_rms(audio_buffer)
+                    MIN_SPEECH_RMS = 800  # Minimum RMS to consider it actual speech (not ambient noise)
+                    MIN_RECORDING_MS = 500  # Minimum recording duration to avoid false triggers
+                    
+                    # Reject if audio is too quiet OR recording too short
+                    if rms < MIN_SPEECH_RMS:
+                        logger.info("End of speech ignored: audio too quiet (RMS=%.0f < %d), likely ambient noise", rms, MIN_SPEECH_RMS)
+                        # Reset and continue recording
+                        audio_buffer.clear()
+                        is_recording = False
+                        silence_counter = 0
+                        continue
+                    
+                    if elapsed_ms < MIN_RECORDING_MS:
+                        logger.info("End of speech ignored: recording too short (%d ms < %d ms), likely false trigger", int(elapsed_ms), MIN_RECORDING_MS)
+                        # Reset and continue recording
+                        audio_buffer.clear()
+                        is_recording = False
+                        silence_counter = 0
+                        continue
+                    
+                    logger.info("End of speech: %d bytes, %d ms, RMS=%.0f", len(audio_buffer), int(elapsed_ms), rms)
                     await websocket.send_json({"type": "status", "state": "processing"})
                     await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
 
-                    # Send "thinking" tone
-                    await websocket.send_bytes(generate_thinking_tone())
-
-                    # Run the full pipeline
+                    # Run the full pipeline - thinking tone will be sent INSIDE process_pipeline only if STT succeeds
+                    # This prevents sending audio feedback for false triggers
                     await process_pipeline(
                         websocket, llm_client, bytes(audio_buffer)
                     )
@@ -257,13 +279,12 @@ async def audio_websocket(websocket: WebSocket):
             elif "text" in data:
                 try:
                     msg = json.loads(data["text"])
-                    if msg.get("type") == "end_of_speech":
+                        if msg.get("type") == "end_of_speech":
                         # Explicit end-of-speech from ESP32 (button release)
                         if len(audio_buffer) > 3200:
                             await websocket.send_json({"type": "status", "state": "processing"})
                             await broadcast_to_dashboard({"type": "pipeline_state", "state": "processing"})
-                            # Send thinking tone (consistent with silence-based path)
-                            await websocket.send_bytes(generate_thinking_tone())
+                            # Thinking tone will be sent inside process_pipeline only if STT succeeds
                             await process_pipeline(
                                 websocket, llm_client, bytes(audio_buffer)
                             )
@@ -367,6 +388,11 @@ async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
         return
 
     logger.info("STT [%.0fms]: %s", stt_ms, text)
+    
+    # Send "thinking" tone ONLY after STT succeeds (prevents false triggers from causing audio feedback)
+    thinking_tone = generate_thinking_tone()
+    logger.debug("Sending thinking tone: %d bytes", len(thinking_tone))
+    await websocket.send_bytes(thinking_tone)
 
     # Broadcast user message to dashboard
     await broadcast_to_dashboard({"type": "user_message", "text": text})
@@ -405,8 +431,10 @@ async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
                                 await broadcast_to_dashboard({"type": "pipeline_state", "state": "speaking"})
                                 # Send PCM in chunks to avoid overwhelming ESP32
                                 chunk_size = 6400  # 200ms at 16kHz
+                                logger.debug("Sending TTS audio: %d bytes total, %d chunks", len(pcm_audio), (len(pcm_audio) + chunk_size - 1) // chunk_size)
                                 for i in range(0, len(pcm_audio), chunk_size):
-                                    await websocket.send_bytes(pcm_audio[i:i + chunk_size])
+                                    chunk = pcm_audio[i:i + chunk_size]
+                                    await websocket.send_bytes(chunk)
                                     await asyncio.sleep(0.01)  # Small delay for ESP32 to buffer
                             except WebSocketDisconnect:
                                 logger.warning("ESP32 disconnected during audio transmission")
@@ -425,7 +453,9 @@ async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
                 chunk_size = 6400
                 try:
                     for i in range(0, len(pcm_audio), chunk_size):
-                        await websocket.send_bytes(pcm_audio[i:i + chunk_size])
+                        chunk = pcm_audio[i:i + chunk_size]
+                        logger.debug("Sending TTS audio chunk: %d bytes", len(chunk))
+                        await websocket.send_bytes(chunk)
                         await asyncio.sleep(0.01)
                 except WebSocketDisconnect:
                     logger.warning("ESP32 disconnected during final audio transmission")
@@ -468,7 +498,9 @@ async def process_pipeline(websocket: WebSocket, llm_client, audio_data: bytes):
 
     # Send "success" chime and final status
     try:
-        await websocket.send_bytes(generate_success_chime())
+        success_chime = generate_success_chime()
+        logger.debug("Sending success chime: %d bytes", len(success_chime))
+        await websocket.send_bytes(success_chime)
 
         await websocket.send_json({
             "type": "done",
